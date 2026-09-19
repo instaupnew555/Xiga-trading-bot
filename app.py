@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
-import math
 from datetime import datetime
+
 
 # ============================================================
 # PAGE
@@ -13,6 +13,7 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed"
 )
+
 
 # ============================================================
 # SESSION DATA
@@ -27,6 +28,12 @@ if "stats" not in st.session_state:
         "wins": 0,
         "losses": 0
     }
+
+if "page" not in st.session_state:
+    st.session_state.page = "trade"
+
+if "last_result" not in st.session_state:
+    st.session_state.last_result = {}
 
 
 # ============================================================
@@ -149,67 +156,148 @@ ASSETS = {
 
 
 # ============================================================
+# TIMEFRAME MAPPING
+# ============================================================
+
+TIMEFRAME_MAP = {
+    "1 MIN": "1min",
+    "5 MIN": "5min"
+}
+
+
+# ============================================================
 # TWELVE DATA
 # ============================================================
 
+def get_api_key():
+
+    try:
+        key = st.secrets["TWELVE_DATA_API_KEY"]
+
+        if not key:
+            return None
+
+        return str(key).strip()
+
+    except Exception:
+        return None
+
+
 def get_candles(symbol, interval="1min", outputsize=100):
 
+    api_key = get_api_key()
+
+    if not api_key:
+        return [], "API KEY NOT FOUND"
+
+    url = "https://api.twelvedata.com/time_series"
+
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "outputsize": outputsize,
+        "apikey": api_key,
+        "format": "JSON"
+    }
+
     try:
-    api_key = st.secrets["TWELVE_DATA_API_KEY"]
-
-except Exception:
-    return [], "API KEY NOT FOUND"
-
-
-    try:
-
-        url = "https://api.twelvedata.com/time_series"
-
-        params = {
-            "symbol": symbol,
-            "interval": interval,
-            "outputsize": outputsize,
-            "apikey": api_key
-        }
 
         response = requests.get(
             url,
             params=params,
-            timeout=10
+            timeout=(5, 10)
         )
 
-        data = response.json()
+        try:
+            data = response.json()
+
+        except ValueError:
+            return [], (
+                f"INVALID API RESPONSE "
+                f"(HTTP {response.status_code})"
+            )
+
+        if response.status_code != 200:
+
+            message = data.get(
+                "message",
+                f"HTTP {response.status_code}"
+            )
+
+            return [], (
+                f"TWELVE DATA ERROR: {message}"
+            )
 
         if data.get("status") == "error":
-            return None, data.get(
+
+            return [], data.get(
                 "message",
-                "DATA ERROR"
+                "TWELVE DATA ERROR"
             )
 
         values = data.get("values")
 
         if not values:
-            return None, "NO MARKET DATA"
 
-        values = list(reversed(values))
+            return [], "NO MARKET DATA RETURNED"
 
         candles = []
 
-        for x in values:
+        for item in reversed(values):
 
-            candles.append({
-                "open": float(x["open"]),
-                "high": float(x["high"]),
-                "low": float(x["low"]),
-                "close": float(x["close"]),
-                "datetime": x.get("datetime", "")
-            })
+            try:
+
+                candles.append({
+                    "open": float(item["open"]),
+                    "high": float(item["high"]),
+                    "low": float(item["low"]),
+                    "close": float(item["close"]),
+                    "datetime": item.get(
+                        "datetime",
+                        ""
+                    )
+                })
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError
+            ):
+                continue
+
+        if len(candles) < 60:
+
+            return [], (
+                f"NOT ENOUGH MARKET DATA "
+                f"({len(candles)} candles)"
+            )
 
         return candles, "LIVE DATA CONNECTED"
 
+    except requests.exceptions.Timeout:
+
+        return [], (
+            "MARKET DATA TIMEOUT "
+            "(Twelve Data did not respond within 10 seconds)"
+        )
+
+    except requests.exceptions.ConnectionError:
+
+        return [], (
+            "NETWORK CONNECTION ERROR"
+        )
+
+    except requests.exceptions.RequestException as e:
+
+        return [], (
+            f"REQUEST ERROR: {str(e)}"
+        )
+
     except Exception as e:
 
-return [], f"CONNECTION ERROR: {str(e)}"
+        return [], (
+            f"CONNECTION ERROR: {str(e)}"
+        )
 
 
 # ============================================================
@@ -223,12 +311,15 @@ def ema(values, period):
 
     multiplier = 2 / (period + 1)
 
-    current = sum(values[:period]) / period
+    current = sum(
+        values[:period]
+    ) / period
 
     for price in values[period:]:
 
         current = (
-            (price - current) * multiplier
+            (price - current)
+            * multiplier
             + current
         )
 
@@ -245,42 +336,63 @@ def rsi(values, period=14):
 
     for i in range(1, len(values)):
 
-        change = values[i] - values[i - 1]
+        change = (
+            values[i] -
+            values[i - 1]
+        )
 
         if change > 0:
+
             gains.append(change)
             losses.append(0)
 
         else:
+
             gains.append(0)
-            losses.append(abs(change))
+            losses.append(
+                abs(change)
+            )
 
-    avg_gain = sum(
-        gains[:period]
-    ) / period
+    avg_gain = (
+        sum(gains[:period]) /
+        period
+    )
 
-    avg_loss = sum(
-        losses[:period]
-    ) / period
+    avg_loss = (
+        sum(losses[:period]) /
+        period
+    )
 
-    for i in range(period, len(gains)):
+    for i in range(
+        period,
+        len(gains)
+    ):
 
         avg_gain = (
-            (avg_gain * (period - 1))
+            (
+                avg_gain *
+                (period - 1)
+            )
             + gains[i]
         ) / period
 
         avg_loss = (
-            (avg_loss * (period - 1))
+            (
+                avg_loss *
+                (period - 1)
+            )
             + losses[i]
         ) / period
 
     if avg_loss == 0:
-        return 100
+
+        return 100.0
 
     rs = avg_gain / avg_loss
 
-    return 100 - (100 / (1 + rs))
+    return 100 - (
+        100 / (1 + rs)
+    )
 
 
 def macd(values):
@@ -294,40 +406,75 @@ def macd(values):
     if fast is None or slow is None:
         return None, None
 
-    macd_value = fast - slow
+    current_macd = fast - slow
 
-    # Simplified signal comparison
-    recent = values[-9:]
+    previous_values = values[:-1]
 
-    recent_fast = ema(
-        values[-21:],
+    previous_fast = ema(
+        previous_values,
         12
     )
 
-    recent_slow = ema(
-        values[-35:],
+    previous_slow = ema(
+        previous_values,
         26
     )
 
-    if recent_fast is None or recent_slow is None:
-        return macd_value, None
+    if (
+        previous_fast is None
+        or previous_slow is None
+    ):
+        return current_macd, None
 
     previous_macd = (
-        recent_fast - recent_slow
+        previous_fast -
+        previous_slow
     )
 
-    return macd_value, previous_macd
+    return current_macd, previous_macd
 
 
 # ============================================================
 # MARKET ANALYSIS
 # ============================================================
 
-def analyze_market(symbol):
+def analyze_market(
+    symbol,
+    timeframe="1 MIN"
+):
+
+    # --------------------------------------------------------
+    # Validate timeframe
+    # --------------------------------------------------------
+
+    if timeframe not in TIMEFRAME_MAP:
+
+        return {
+            "success": False,
+            "signal": "NO TRADE",
+            "strength": 0,
+            "status": (
+                "SECOND-BASED DATA NOT AVAILABLE. "
+                "Twelve Data currently provides "
+                "1 MIN and larger standard intervals "
+                "for this analysis."
+            ),
+            "description": (
+                "10 SEC, 15 SEC and 30 SEC signals "
+                "are disabled to avoid using fake "
+                "second-level market data."
+            )
+        }
+
+    interval = TIMEFRAME_MAP[timeframe]
+
+    # --------------------------------------------------------
+    # Fetch market data
+    # --------------------------------------------------------
 
     candles, status = get_candles(
         symbol,
-        "1min",
+        interval,
         100
     )
 
@@ -335,21 +482,48 @@ def analyze_market(symbol):
 
         return {
             "success": False,
-            "status": status
+            "signal": "NO TRADE",
+            "strength": 0,
+            "status": status,
+            "description": status
         }
 
+    # --------------------------------------------------------
+    # Closing prices
+    # --------------------------------------------------------
+
     closes = [
-        x["close"]
-        for x in candles
+        candle["close"]
+        for candle in candles
     ]
 
+    if len(closes) < 60:
+
+        return {
+            "success": False,
+            "signal": "NO TRADE",
+            "strength": 0,
+            "status": "NOT ENOUGH DATA",
+            "description": (
+                "The data provider returned "
+                "too few candles."
+            )
+        }
+
     current = closes[-1]
+
+    # --------------------------------------------------------
+    # Indicators
+    # --------------------------------------------------------
 
     ema9 = ema(closes, 9)
     ema21 = ema(closes, 21)
     ema50 = ema(closes, 50)
 
-    rsi_value = rsi(closes, 14)
+    rsi_value = rsi(
+        closes,
+        14
+    )
 
     macd_value, previous_macd = macd(
         closes
@@ -359,55 +533,82 @@ def analyze_market(symbol):
 
     reasons = []
 
-    # EMA trend
-    if ema9 and ema21:
+    # --------------------------------------------------------
+    # EMA 9 / EMA 21
+    # --------------------------------------------------------
+
+    if (
+        ema9 is not None
+        and ema21 is not None
+    ):
 
         if ema9 > ema21:
 
             score += 1
+
             reasons.append(
-                "Short EMA above medium EMA"
+                "Short-term trend is bullish"
             )
 
         elif ema9 < ema21:
 
             score -= 1
+
             reasons.append(
-                "Short EMA below medium EMA"
+                "Short-term trend is bearish"
             )
 
+    # --------------------------------------------------------
+    # EMA 21 / EMA 50
+    # --------------------------------------------------------
 
-    # Larger trend
-    if ema21 and ema50:
+    if (
+        ema21 is not None
+        and ema50 is not None
+    ):
 
         if ema21 > ema50:
 
             score += 1
+
             reasons.append(
-                "Medium trend is bullish"
+                "Medium-term trend is bullish"
             )
 
         elif ema21 < ema50:
 
             score -= 1
+
             reasons.append(
-                "Medium trend is bearish"
+                "Medium-term trend is bearish"
             )
 
+    # --------------------------------------------------------
+    # Current price vs EMA 21
+    # --------------------------------------------------------
 
-    # Price vs EMA
-    if ema21:
+    if ema21 is not None:
 
         if current > ema21:
 
             score += 1
 
-        else:
+            reasons.append(
+                "Price is above EMA 21"
+            )
+
+        elif current < ema21:
 
             score -= 1
 
+            reasons.append(
+                "Price is below EMA 21"
+            )
 
+    # --------------------------------------------------------
     # RSI
+    # --------------------------------------------------------
+
     if rsi_value is not None:
 
         if rsi_value >= 55:
@@ -415,7 +616,7 @@ def analyze_market(symbol):
             score += 1
 
             reasons.append(
-                "RSI supports bullish momentum"
+                f"RSI bullish ({rsi_value:.1f})"
             )
 
         elif rsi_value <= 45:
@@ -423,17 +624,19 @@ def analyze_market(symbol):
             score -= 1
 
             reasons.append(
-                "RSI supports bearish momentum"
+                f"RSI bearish ({rsi_value:.1f})"
             )
 
         else:
 
             reasons.append(
-                "RSI is neutral"
+                f"RSI neutral ({rsi_value:.1f})"
             )
 
-
+    # --------------------------------------------------------
     # MACD
+    # --------------------------------------------------------
+
     if macd_value is not None:
 
         if macd_value > 0:
@@ -444,7 +647,7 @@ def analyze_market(symbol):
                 "MACD is positive"
             )
 
-        else:
+        elif macd_value < 0:
 
             score -= 1
 
@@ -452,23 +655,56 @@ def analyze_market(symbol):
                 "MACD is negative"
             )
 
+        if previous_macd is not None:
 
-    # Recent candle momentum
-    if len(closes) >= 5:
+            if (
+                macd_value >
+                previous_macd
+            ):
+
+                reasons.append(
+                    "MACD momentum is rising"
+                )
+
+            elif (
+                macd_value <
+                previous_macd
+            ):
+
+                reasons.append(
+                    "MACD momentum is falling"
+                )
+
+    # --------------------------------------------------------
+    # Recent momentum
+    # --------------------------------------------------------
+
+    if len(closes) >= 6:
 
         momentum = (
             closes[-1] -
-            closes[-5]
+            closes[-6]
         )
 
         if momentum > 0:
 
             score += 1
 
+            reasons.append(
+                "Recent price momentum is bullish"
+            )
+
         elif momentum < 0:
 
             score -= 1
 
+            reasons.append(
+                "Recent price momentum is bearish"
+            )
+
+    # --------------------------------------------------------
+    # Strength
+    # --------------------------------------------------------
 
     absolute_score = abs(score)
 
@@ -492,8 +728,10 @@ def analyze_market(symbol):
 
         strength = 1
 
+    # --------------------------------------------------------
+    # Signal
+    # --------------------------------------------------------
 
-    # Require stronger confirmation
     if score >= 4:
 
         signal = "CALL"
@@ -506,6 +744,34 @@ def analyze_market(symbol):
 
         signal = "NO TRADE"
 
+    # --------------------------------------------------------
+    # Description
+    # --------------------------------------------------------
+
+    if signal == "CALL":
+
+        description = (
+            f"Bullish confirmation from "
+            f"{len(reasons)} technical conditions. "
+            f"Score: {score:+d}/6."
+        )
+
+    elif signal == "PUT":
+
+        description = (
+            f"Bearish confirmation from "
+            f"{len(reasons)} technical conditions. "
+            f"Score: {score:+d}/6."
+        )
+
+    else:
+
+        description = (
+            f"Market conditions are mixed. "
+            f"Score: {score:+d}/6. "
+            f"XIGA recommends waiting for stronger "
+            f"confirmation."
+        )
 
     return {
 
@@ -533,7 +799,11 @@ def analyze_market(symbol):
 
         "status": status,
 
-        "data_interval": "1 MIN"
+        "description": description,
+
+        "data_interval": interval,
+
+        "timeframe": timeframe
 
     }
 
@@ -619,22 +889,10 @@ HTML = r"""
     preserveAspectRatio="none"
 >
 
-<line class="grid"
-x1="0" y1="35"
-x2="500" y2="35"/>
-
-<line class="grid"
-x1="0" y1="85"
-x2="500" y2="85"/>
-
-<line class="grid"
-x1="0" y1="135"
-x2="500" y2="135"/>
-
-<line class="grid"
-x1="0" y1="185"
-x2="500" y2="185"/>
-
+<line class="grid" x1="0" y1="35" x2="500" y2="35"/>
+<line class="grid" x1="0" y1="85" x2="500" y2="85"/>
+<line class="grid" x1="0" y1="135" x2="500" y2="135"/>
+<line class="grid" x1="0" y1="185" x2="500" y2="185"/>
 
 <polyline
 class="green-line"
@@ -656,7 +914,6 @@ points="
 500,12"
 />
 
-
 <polyline
 class="red-line"
 points="
@@ -675,137 +932,41 @@ points="
 500,43"
 />
 
+<line class="candle-green" x1="35" y1="180" x2="35" y2="135"/>
+<rect class="candle-green" x="29" y="145" width="12" height="25" rx="2"/>
 
-<line class="candle-green"
-x1="35" y1="180"
-x2="35" y2="135"/>
+<line class="candle-red" x1="72" y1="170" x2="72" y2="125"/>
+<rect class="candle-red" x="66" y="135" width="12" height="25" rx="2"/>
 
-<rect class="candle-green"
-x="29" y="145"
-width="12"
-height="25"
-rx="2"/>
+<line class="candle-green" x1="110" y1="150" x2="110" y2="105"/>
+<rect class="candle-green" x="104" y="115" width="12" height="25" rx="2"/>
 
+<line class="candle-green" x1="148" y1="135" x2="148" y2="88"/>
+<rect class="candle-green" x="142" y="98" width="12" height="25" rx="2"/>
 
-<line class="candle-red"
-x1="72" y1="170"
-x2="72" y2="125"/>
+<line class="candle-red" x1="186" y1="145" x2="186" y2="95"/>
+<rect class="candle-red" x="180" y="105" width="12" height="28" rx="2"/>
 
-<rect class="candle-red"
-x="66" y="135"
-width="12"
-height="25"
-rx="2"/>
+<line class="candle-green" x1="224" y1="115" x2="224" y2="65"/>
+<rect class="candle-green" x="218" y="75" width="12" height="28" rx="2"/>
 
+<line class="candle-green" x1="262" y1="105" x2="262" y2="50"/>
+<rect class="candle-green" x="256" y="58" width="12" height="30" rx="2"/>
 
-<line class="candle-green"
-x1="110" y1="150"
-x2="110" y2="105"/>
+<line class="candle-red" x1="300" y1="115" x2="300" y2="62"/>
+<rect class="candle-red" x="294" y="72" width="12" height="28" rx="2"/>
 
-<rect class="candle-green"
-x="104" y="115"
-width="12"
-height="25"
-rx="2"/>
+<line class="candle-green" x1="338" y1="85" x2="338" y2="38"/>
+<rect class="candle-green" x="332" y="45" width="12" height="27" rx="2"/>
 
+<line class="candle-green" x1="376" y1="70" x2="376" y2="25"/>
+<rect class="candle-green" x="370" y="31" width="12" height="27" rx="2"/>
 
-<line class="candle-green"
-x1="148" y1="135"
-x2="148" y2="88"/>
+<line class="candle-red" x1="414" y1="82" x2="414" y2="35"/>
+<rect class="candle-red" x="408" y="43" width="12" height="26" rx="2"/>
 
-<rect class="candle-green"
-x="142" y="98"
-width="12"
-height="25"
-rx="2"/>
-
-
-<line class="candle-red"
-x1="186" y1="145"
-x2="186" y2="95"/>
-
-<rect class="candle-red"
-x="180" y="105"
-width="12"
-height="28"
-rx="2"/>
-
-
-<line class="candle-green"
-x1="224" y1="115"
-x2="224" y2="65"/>
-
-<rect class="candle-green"
-x="218" y="75"
-width="12"
-height="28"
-rx="2"/>
-
-
-<line class="candle-green"
-x1="262" y1="105"
-x2="262" y2="50"/>
-
-<rect class="candle-green"
-x="256" y="58"
-width="12"
-height="30"
-rx="2"/>
-
-
-<line class="candle-red"
-x1="300" y1="115"
-x2="300" y2="62"/>
-
-<rect class="candle-red"
-x="294" y="72"
-width="12"
-height="28"
-rx="2"/>
-
-
-<line class="candle-green"
-x1="338" y1="85"
-x2="338" y2="38"/>
-
-<rect class="candle-green"
-x="332" y="45"
-width="12"
-height="27"
-rx="2"/>
-
-
-<line class="candle-green"
-x1="376" y1="70"
-x2="376" y2="25"/>
-
-<rect class="candle-green"
-x="370" y="31"
-width="12"
-height="27"
-rx="2"/>
-
-
-<line class="candle-red"
-x1="414" y1="82"
-x2="414" y2="35"/>
-
-<rect class="candle-red"
-x="408" y="43"
-width="12"
-height="26"
-rx="2"/>
-
-
-<line class="candle-green"
-x1="452" y1="52"
-x2="452" y2="10"/>
-
-<rect class="candle-green"
-x="446" y="17"
-width="12"
-height="25"
-rx="2"/>
+<line class="candle-green" x1="452" y1="52" x2="452" y2="10"/>
+<rect class="candle-green" x="446" y="17" width="12" height="25" rx="2"/>
 
 </svg>
 
@@ -945,7 +1106,7 @@ rx="2"/>
 
 
 <div class="footer">
-    🔒 SECURE • XIGA AI • V5.0 • LIVE ANALYSIS
+    🔒 SECURE • XIGA AI • V5.1 • LIVE ANALYSIS
 </div>
 
 </div>
@@ -1375,6 +1536,11 @@ select option{
     box-shadow:0 8px 28px rgba(37,245,166,.20);
 }
 
+.generate:disabled{
+    opacity:.65;
+    cursor:wait;
+}
+
 .countdown{
     position:relative;
     z-index:5;
@@ -1525,9 +1691,6 @@ export default function(component){
     const marketStatus =
         parentElement.querySelector("#marketStatus");
 
-    const countdown =
-        parentElement.querySelector("#countdown");
-
     const dataSource =
         parentElement.querySelector("#dataSource");
 
@@ -1543,27 +1706,32 @@ export default function(component){
 
 
     /* ==========================================
-       CATEGORY LIST
+       CATEGORY
        ========================================== */
 
     category.innerHTML = "";
 
-    Object.keys(assets).forEach(function(name){
+    Object.keys(assets).forEach(
+        function(name){
 
-        const option =
-            document.createElement("option");
+            const option =
+                document.createElement(
+                    "option"
+                );
 
-        option.value = name;
+            option.value = name;
+            option.textContent = name;
 
-        option.textContent = name;
+            category.appendChild(
+                option
+            );
 
-        category.appendChild(option);
-
-    });
+        }
+    );
 
 
     /* ==========================================
-       ASSET LIST
+       ASSETS
        ========================================== */
 
     function populateAssets(){
@@ -1576,20 +1744,35 @@ export default function(component){
         const list =
             assets[selected] || {};
 
-        Object.keys(list).forEach(function(name){
+        Object.keys(list).forEach(
+            function(name){
 
-            const option =
-                document.createElement("option");
+                const option =
+                    document.createElement(
+                        "option"
+                    );
 
-            option.value = name;
+                option.value = name;
+                option.textContent = name;
 
-            option.textContent = name;
+                asset.appendChild(
+                    option
+                );
 
-            asset.appendChild(option);
-
-        });
+            }
+        );
 
         updateAsset();
+
+    }
+
+
+    function cleanAssetName(name){
+
+        return name
+            .replace(/🇺🇸|🇪🇺|🇬🇧|🇯🇵|🇦🇺|🇨🇦|🇨🇭|🇳🇿/g,"")
+            .replace(/^\s+/,"")
+            .trim();
 
     }
 
@@ -1605,36 +1788,33 @@ export default function(component){
         const display =
             asset.value ||
             Object.keys(list)[0] ||
-            "EUR/USD";
+            "🇺🇸 🇪🇺 EUR/USD";
 
         signalAsset.textContent =
-            display.replace(
-                "🇺🇸 🇪🇺 ",
-                ""
-            ).replace(
-                "🇬🇧 🇺🇸 ",
-                ""
-            ).replace(
-                "🇺🇸 🇯🇵 ",
-                ""
-            ).replace(
-                "🇦🇺 🇺🇸 ",
-                ""
-            ).replace(
-                "🇺🇸 🇨🇦 ",
-                ""
-            );
+            cleanAssetName(display);
 
         signalTime.textContent =
             "● TIMEFRAME: " +
             timeframe.value;
+
 
         if(selected === "OTC"){
 
             marketStatus.textContent =
                 "● OTC DATA FEED REQUIRED";
 
-        }else{
+        }
+        else if(
+            timeframe.value === "10 SEC" ||
+            timeframe.value === "15 SEC" ||
+            timeframe.value === "30 SEC"
+        ){
+
+            marketStatus.textContent =
+                "● SECOND DATA UNAVAILABLE";
+
+        }
+        else{
 
             marketStatus.textContent =
                 "● MARKET READY";
@@ -1658,6 +1838,37 @@ export default function(component){
 
 
     /* ==========================================
+       RESET UI
+       ========================================== */
+
+    function resetSignalUI(){
+
+        signalCircle.classList.remove(
+            "sell",
+            "neutral"
+        );
+
+        arrow.classList.remove(
+            "sell",
+            "neutral"
+        );
+
+        signalTitle.className =
+            "signal-title buy";
+
+        arrow.textContent =
+            "◇";
+
+        signalTitle.textContent =
+            "AI READY";
+
+        direction.textContent =
+            "WAITING FOR ANALYSIS";
+
+    }
+
+
+    /* ==========================================
        ANALYZE
        ========================================== */
 
@@ -1672,29 +1883,33 @@ export default function(component){
         const selectedTimeframe =
             timeframe.value;
 
-        generate.textContent =
-            "◌ ANALYZING MARKET...";
 
         generate.disabled =
             true;
+
+        generate.textContent =
+            "◌ ANALYZING MARKET...";
+
 
         aiTitle.textContent =
             "AI ANALYZING...";
 
         aiDescription.textContent =
-            "Reading live market conditions...";
+            "Connecting to live market data...";
 
-        signalTitle.textContent =
-            "ANALYZING";
 
         signalTitle.className =
             "signal-title buy";
 
+        signalTitle.textContent =
+            "ANALYZING";
+
         direction.textContent =
-            "PROCESSING MARKET DATA";
+            "READING MARKET DATA";
 
         arrow.textContent =
             "◌";
+
 
         setTriggerValue(
             "analyze",
@@ -1722,45 +1937,56 @@ export default function(component){
 
     parentElement
         .querySelectorAll(".nav")
-        .forEach(function(nav){
+        .forEach(
+            function(nav){
 
-            nav.onclick =
-                function(){
+                nav.onclick =
+                    function(){
 
-                    const page =
-                        nav.dataset.page;
+                        const page =
+                            nav.dataset.page;
 
-                    parentElement
-                        .querySelectorAll(".nav")
-                        .forEach(function(item){
 
-                            item.classList.remove(
-                                "active"
+                        parentElement
+                            .querySelectorAll(
+                                ".nav"
+                            )
+                            .forEach(
+                                function(item){
+
+                                    item.classList
+                                        .remove(
+                                            "active"
+                                        );
+
+                                }
                             );
 
-                        });
 
-                    nav.classList.add(
-                        "active"
-                    );
+                        nav.classList.add(
+                            "active"
+                        );
 
-                    setStateValue(
-                        "page",
-                        page
-                    );
 
-                    setTriggerValue(
-                        "navigation",
-                        page
-                    );
+                        setStateValue(
+                            "page",
+                            page
+                        );
 
-                };
 
-        });
+                        setTriggerValue(
+                            "navigation",
+                            page
+                        );
+
+                    };
+
+            }
+        );
 
 
     /* ==========================================
-       DISPLAY RESULT
+       RESULT
        ========================================== */
 
     if(result && result.signal){
@@ -1769,7 +1995,9 @@ export default function(component){
             result.signal;
 
         const strength =
-            result.strength || 0;
+            Number(
+                result.strength || 0
+            );
 
 
         signalCircle.classList.remove(
@@ -1790,6 +2018,15 @@ export default function(component){
 
 
         if(signal === "CALL"){
+
+            signalCircle.classList.remove(
+                "neutral"
+            );
+
+            arrow.classList.remove(
+                "sell",
+                "neutral"
+            );
 
             signalCircle.classList.add(
                 "buy"
@@ -1858,7 +2095,7 @@ export default function(component){
             );
 
             direction.textContent =
-                "INSUFFICIENT CONFIRMATION";
+                "WAIT FOR STRONGER CONFIRMATION";
 
         }
 
@@ -1866,442 +2103,6 @@ export default function(component){
         let filled = "";
         let empty = "";
 
-        for(
-            let i=0;
-            i<strength;
-            i++
-        ){
-
-            filled += "● ";
-
-        }
 
         for(
-            let i=strength;
-            i<5;
-            i++
-        ){
-
-            empty += "● ";
-
-        }
-
-        strengthDots.innerHTML =
-            filled +
-            '<span class="empty">' +
-            empty +
-            '</span>';
-
-        strengthText.textContent =
-            strength + "/5";
-
-
-        aiTitle.textContent =
-            "AI ANALYSIS COMPLETE";
-
-        aiDescription.textContent =
-            result.description ||
-            "Technical analysis completed";
-
-
-        if(result.price){
-
-            dataSource.textContent =
-                "Twelve Data • " +
-                result.price;
-
-        }
-
-
-        countdown.style.display =
-            "block";
-
-
-        generate.disabled =
-            false;
-
-        generate.textContent =
-            "↻ GENERATE NEW SIGNAL";
-
-    }
-
-
-    /* ==========================================
-       WIN RATE
-       ========================================== */
-
-    if(stats.total > 0){
-
-        winRate.textContent =
-            stats.win_rate + "%";
-
-        winStatus.textContent =
-            "● " +
-            stats.wins +
-            " WINS • " +
-            stats.losses +
-            " LOSSES";
-
-    }
-
-
-    /* ==========================================
-       NAV PAGE
-       ========================================== */
-
-    const page =
-        data?.page || "trade";
-
-    if(page !== "trade"){
-
-        aiTitle.textContent =
-            page.toUpperCase();
-
-        aiDescription.textContent =
-            "This section is connected and ready.";
-
-    }
-
-
-    return () => {};
-
-}
-"""
-
-
-# ============================================================
-# COMPONENT
-# ============================================================
-
-try:
-
-    xiga_component = st.components.v2.component(
-        name="xiga_trading_v5",
-        html=HTML,
-        css=CSS,
-        js=JS,
-        isolate_styles=True
-    )
-
-except Exception as e:
-
-    st.error(
-        "XIGA requires a recent Streamlit version."
-    )
-
-    st.code(
-        "streamlit>=1.50.0"
-    )
-
-    st.stop()
-
-
-# ============================================================
-# CALLBACKS
-# ============================================================
-
-def analyze_callback():
-
-    action = (
-        st.session_state
-        .xiga_component
-        .analyze
-    )
-
-    if not action:
-        return
-
-    category = action.get(
-        "category",
-        "Forex"
-    )
-
-    display_asset = action.get(
-        "asset",
-        "🇺🇸 🇪🇺 EUR/USD"
-    )
-
-    timeframe = action.get(
-        "timeframe",
-        "1 MIN"
-    )
-
-    symbol = ASSETS.get(
-        category,
-        {}
-    ).get(
-        display_asset
-    )
-
-
-    # OTC
-    if category == "OTC" or symbol is None:
-
-        st.session_state.last_result = {
-
-            "success": False,
-
-            "signal": "NO TRADE",
-
-            "strength": 0,
-
-            "status":
-                "OTC DATA FEED REQUIRED",
-
-            "description":
-                "Pocket Option OTC pricing is separate from the normal market feed. XIGA will not create a fake live signal."
-
-        }
-
-        return
-
-
-    result = analyze_market(symbol)
-
-    if not result.get("success"):
-
-        st.session_state.last_result = result
-
-        return
-
-
-    # Store signal
-    record = {
-
-        "time":
-            datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-
-        "asset":
-            display_asset,
-
-        "symbol":
-            symbol,
-
-        "timeframe":
-            timeframe,
-
-        "signal":
-            result["signal"],
-
-        "strength":
-            result["strength"],
-
-        "price":
-            result["price"],
-
-        "status":
-            "PENDING"
-
-    }
-
-    st.session_state.history.insert(
-        0,
-        record
-    )
-
-    st.session_state.history = (
-        st.session_state.history[:100]
-    )
-
-    st.session_state.stats["signals"] += 1
-
-    st.session_state.last_result = result
-
-
-def navigation_callback():
-
-    action = (
-        st.session_state
-        .xiga_component
-        .navigation
-    )
-
-    if action:
-
-        st.session_state.page = action
-
-
-# ============================================================
-# SESSION DEFAULTS
-# ============================================================
-
-if "page" not in st.session_state:
-    st.session_state.page = "trade"
-
-if "last_result" not in st.session_state:
-    st.session_state.last_result = {}
-
-
-# ============================================================
-# DATA FOR COMPONENT
-# ============================================================
-
-wins = st.session_state.stats["wins"]
-losses = st.session_state.stats["losses"]
-total_results = wins + losses
-
-if total_results:
-
-    win_rate = round(
-        wins / total_results * 100,
-        1
-    )
-
-else:
-
-    win_rate = None
-
-
-result_for_ui = (
-    st.session_state.last_result
-    if st.session_state.page == "trade"
-    else {}
-)
-
-
-component_data = {
-
-    "assets": ASSETS,
-
-    "page":
-        st.session_state.page,
-
-    "result":
-        result_for_ui,
-
-    "stats": {
-
-        "wins":
-            wins,
-
-        "losses":
-            losses,
-
-        "total":
-            total_results,
-
-        "win_rate":
-            win_rate
-            if win_rate is not None
-            else "—"
-
-    }
-
-}
-
-
-# ============================================================
-# MOUNT
-# ============================================================
-
-xiga_component = xiga_component(
-    data=component_data,
-    default={"page": st.session_state.page},
-    on_page_change=lambda: None,
-    on_analyze_change=analyze_callback,
-    on_navigation_change=navigation_callback,
-    key="xiga_component",
-    width="stretch",
-    height=900
-)
-
-# ============================================================
-# HISTORY / LEARN / PROFILE
-# ============================================================
-
-# Keep these below the custom UI so the primary layout remains
-# visually unchanged. These are hidden from the normal Trade
-# screen and appear when the user selects the relevant section.
-
-if st.session_state.page == "history":
-
-    st.markdown(
-        "### 📊 XIGA Trade History"
-    )
-
-    if not st.session_state.history:
-
-        st.info(
-            "No signals have been generated yet."
-        )
-
-    else:
-
-        for item in st.session_state.history[:20]:
-
-            st.markdown(
-                f"""
-**{item['asset']}** • {item['signal']} •
-Strength {item['strength']}/5  
-`{item['time']}` • Price `{item['price']}` • `{item['status']}`
-"""
-            )
-
-
-elif st.session_state.page == "learn":
-
-    st.markdown(
-        "### 📚 XIGA Learn"
-    )
-
-    st.markdown(
-        """
-**Candlesticks**  
-Candles show open, high, low and close prices.
-
-**EMA**  
-XIGA uses short and medium moving averages to identify trend direction.
-
-**RSI**  
-RSI measures recent momentum. It is one input—not a guarantee of future direction.
-
-**MACD**  
-MACD compares moving averages to help identify momentum and trend changes.
-
-**Signal Strength**  
-5/5 means more of XIGA's configured conditions agree. It does **not** mean a guaranteed 100% probability.
-
-**NO TRADE**  
-When conditions do not provide enough confirmation, XIGA can refuse to generate a directional signal.
-"""
-    )
-
-
-elif st.session_state.page == "profile":
-
-    st.markdown(
-        "### 👤 XIGA Profile"
-    )
-
-    st.metric(
-        "Total Signals",
-        st.session_state.stats["signals"]
-    )
-
-    st.metric(
-        "Completed Results",
-        total_results
-    )
-
-    st.metric(
-        "Historical Win Rate",
-        f"{win_rate}%"
-        if win_rate is not None
-        else "—"
-    )
-
-    st.caption(
-        "Win rate is calculated only from completed results recorded by XIGA."
-    )
-
-
-# ============================================================
-# FOOTNOTE
-# ============================================================
-
-st.caption(
-    "XIGA is a market-analysis assistant. "
-    "Signals are not guaranteed and this app does not place trades automatically."
-)
+            let
