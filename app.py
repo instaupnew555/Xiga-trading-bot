@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 st.set_page_config(page_title="XIGA Trading", page_icon="📈", layout="centered", initial_sidebar_state="collapsed")
 
@@ -40,9 +41,27 @@ def get_candles(symbol, interval, outputsize=100):
         if data.get("status") == "error": return [], data.get("message","TWELVE DATA ERROR")
         vals = data.get("values",[])
         candles=[]
+        # Keep the feed timezone with each candle. Twelve Data can return
+        # timestamps without an offset, so using the feed's own timezone is
+        # important when deciding whether the newest candle has completed.
+        meta = data.get("meta") or {}
+        feed_timezone = (
+            meta.get("exchange_timezone")
+            or meta.get("timezone")
+            or "UTC"
+        )
         for x in reversed(vals):
-            try: candles.append({"open":float(x["open"]),"high":float(x["high"]),"low":float(x["low"]),"close":float(x["close"]),"datetime":x.get("datetime","")})
-            except (KeyError,TypeError,ValueError): pass
+            try:
+                candles.append({
+                    "open": float(x["open"]),
+                    "high": float(x["high"]),
+                    "low": float(x["low"]),
+                    "close": float(x["close"]),
+                    "datetime": x.get("datetime", ""),
+                    "timezone": feed_timezone,
+                })
+            except (KeyError,TypeError,ValueError):
+                pass
         if len(candles)<60: return [], f"NOT ENOUGH DATA ({len(candles)} candles)"
         return candles,"LIVE DATA CONNECTED"
     except requests.exceptions.Timeout: return [],"MARKET DATA TIMEOUT"
@@ -225,6 +244,32 @@ def parse_candle_time(value):
     return None
 
 
+def candle_is_completed(candle, interval):
+    """Return True only when the candle's full interval has elapsed.
+
+    This handles both Twelve Data behaviours: feeds that include the current
+    forming candle and feeds that return completed candles only.
+    """
+    candle_time = parse_candle_time(candle.get("datetime"))
+    if candle_time is None:
+        return False
+
+    # Twelve Data timestamps are often timezone-naive. Attach the feed
+    # timezone instead of assuming the user's phone timezone.
+    if candle_time.tzinfo is None:
+        tz_name = candle.get("timezone") or "UTC"
+        try:
+            candle_time = candle_time.replace(tzinfo=ZoneInfo(tz_name))
+        except Exception:
+            candle_time = candle_time.replace(tzinfo=timezone.utc)
+
+    minutes = 1 if interval == "1min" else 5 if interval == "5min" else None
+    if minutes is None:
+        return False
+
+    return datetime.now(candle_time.tzinfo) >= candle_time + timedelta(minutes=minutes)
+
+
 def calculate_outcome(signal, entry_price, result_price):
     entry_price = float(entry_price)
     result_price = float(result_price)
@@ -286,14 +331,18 @@ def update_pending_results():
             if pair[0] > entry_time
         ]
 
-        # First newer candle = result candle.
-        # Second newer candle proves the first one is complete.
-        if len(newer) < 2:
-            item["tracking_error"] = "WAITING FOR COMPLETED RESULT CANDLE"
-            continue
-
+        # The FIRST newer candle is the result candle. We do not wait for a
+        # second candle. If that candle is still forming, keep tracking until
+        # its full interval has elapsed.
         result_time, result_index = newer[0]
         result_candle = candles[result_index]
+
+        if not candle_is_completed(
+            result_candle,
+            TIMEFRAMES[item["timeframe"]],
+        ):
+            item["tracking_error"] = "WAITING FOR RESULT CANDLE TO CLOSE"
+            continue
 
         outcome = calculate_outcome(
             item["signal"],
