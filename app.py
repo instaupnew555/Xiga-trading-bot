@@ -155,12 +155,10 @@ ASSETS = {
 def get_candles(symbol, interval="1min", outputsize=100):
 
     try:
+    api_key = st.secrets["TWELVE_DATA_API_KEY"]
 
-        api_key = st.secrets["TWELVE_DATA_API_KEY"]
-
-    except Exception:
-
-        return None, "API KEY NOT FOUND"
+except Exception:
+    return [], "API KEY NOT FOUND"
 
 
     try:
@@ -177,7 +175,7 @@ def get_candles(symbol, interval="1min", outputsize=100):
         response = requests.get(
             url,
             params=params,
-            timeout=15
+            timeout=10
         )
 
         data = response.json()
@@ -211,7 +209,7 @@ def get_candles(symbol, interval="1min", outputsize=100):
 
     except Exception as e:
 
-        return None, "CONNECTION ERROR"
+return [], f"CONNECTION ERROR: {str(e)}"
 
 
 # ============================================================
