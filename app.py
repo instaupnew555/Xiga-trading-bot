@@ -1,1677 +1,1528 @@
 import streamlit as st
-import random
-from datetime import datetime
-
-# ============================================================
-# XIGA TRADING SIGNAL BOT
-# PREMIUM MOBILE UI - VERSION 3
-# ============================================================
+import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="XIGA Trading Signal Bot",
+    page_title="XIGA Trading",
     page_icon="📈",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-# ============================================================
-# SESSION STATE
-# ============================================================
+APP = r"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-if "signal" not in st.session_state:
-    st.session_state.signal = None
-
-if "strength" not in st.session_state:
-    st.session_state.strength = 4
-
-if "signal_time" not in st.session_state:
-    st.session_state.signal_time = None
-
-if "page" not in st.session_state:
-    st.session_state.page = "Trade"
-
-# ============================================================
-# PREMIUM CSS
-# ============================================================
-
-st.markdown("""
 <style>
 
-/* =========================================================
-   GLOBAL
-   ========================================================= */
-
-html, body {
-    margin: 0;
-    padding: 0;
-    background: #030914;
+*{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+    -webkit-tap-highlight-color:transparent;
 }
 
-.stApp {
+html,body{
+    width:100%;
+    min-height:100%;
+    background:#020812;
+    font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+}
+
+body{
+    color:#fff;
+}
+
+button,
+select{
+    font-family:inherit;
+}
+
+.app{
+    width:100%;
+    max-width:470px;
+    min-height:100vh;
+    margin:auto;
+    padding:15px 14px 25px;
+
     background:
         radial-gradient(
-            circle at 50% -10%,
-            #173452 0%,
-            #091728 32%,
-            #030914 70%
+            circle at 50% -15%,
+            #173957 0%,
+            #0a1c30 27%,
+            #030914 65%,
+            #020711 100%
         );
-    color: #ffffff;
+
+    overflow:hidden;
 }
 
-.block-container {
-    max-width: 500px !important;
-    padding: 16px 14px 25px !important;
+/* ==============================
+   TOP BAR
+   ============================== */
+
+.topbar{
+    height:58px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:14px;
 }
 
-header {
-    visibility: hidden;
-    height: 0;
+.menu{
+    width:42px;
+    height:42px;
+    border-radius:13px;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+
+    background:rgba(11,30,49,.88);
+    border:1px solid #214967;
+
+    color:#dceeff;
+    font-size:21px;
 }
 
-footer {
-    visibility: hidden;
+.brand{
+    text-align:center;
+    flex:1;
 }
 
-#MainMenu {
-    visibility: hidden;
+.brand-title{
+    font-size:25px;
+    line-height:25px;
+    font-weight:900;
+    letter-spacing:1px;
 }
 
-/* =========================================================
-   REMOVE DEFAULT STREAMLIT ELEMENT SPACING
-   ========================================================= */
-
-div[data-testid="stVerticalBlock"] {
-    gap: 0.45rem;
+.brand-title span{
+    color:#28f3a5;
 }
 
-/* =========================================================
-   TOP HEADER
-   ========================================================= */
-
-.xiga-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 58px;
-    margin-bottom: 12px;
+.brand-subtitle{
+    margin-top:5px;
+    color:#71859d;
+    font-size:8px;
+    letter-spacing:2px;
 }
 
-.xiga-menu {
-    width: 42px;
-    height: 42px;
-    border-radius: 13px;
+.pro{
+    min-width:66px;
+    padding:9px 8px;
+    text-align:center;
 
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    background: rgba(10, 31, 52, 0.85);
-    border: 1px solid #16466b;
-
-    color: #d9edff;
-    font-size: 23px;
-}
-
-.xiga-brand {
-    flex: 1;
-    text-align: center;
-    line-height: 1;
-}
-
-.xiga-logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-
-    font-size: 25px;
-    font-weight: 900;
-    letter-spacing: 1px;
-}
-
-.xiga-logo-icon {
-    color: #24f4b0;
-    font-size: 27px;
-}
-
-.xiga-brand-sub {
-    margin-top: 5px;
-    color: #8295ad;
-    font-size: 8px;
-    letter-spacing: 1.6px;
-}
-
-.xiga-pro {
-    min-width: 66px;
-    padding: 9px 8px;
-    border-radius: 12px;
-
-    text-align: center;
-
-    color: #ffd96a;
-    font-size: 10px;
-    font-weight: 800;
+    border-radius:12px;
 
     background:
         linear-gradient(
             135deg,
-            rgba(91, 66, 16, .8),
-            rgba(41, 31, 9, .8)
+            #3d2d0d,
+            #1f1809
         );
 
-    border: 1px solid #a87b19;
+    border:1px solid #9b741d;
 
-    box-shadow:
-        0 0 15px rgba(220, 166, 40, .12);
+    color:#ffd76a;
+    font-size:10px;
+    font-weight:800;
 }
 
-/* =========================================================
+/* ==============================
    GLASS
-   ========================================================= */
+   ============================== */
 
-.glass {
+.glass{
     background:
         linear-gradient(
             145deg,
-            rgba(12, 32, 54, .94),
-            rgba(5, 17, 31, .97)
+            rgba(13,34,57,.96),
+            rgba(5,16,29,.97)
         );
 
-    border: 1px solid rgba(31, 96, 143, .65);
+    border:1px solid rgba(32,91,132,.72);
 
-    border-radius: 19px;
+    border-radius:20px;
 
     box-shadow:
-        0 14px 40px rgba(0,0,0,.30),
+        0 18px 45px rgba(0,0,0,.32),
         inset 0 1px rgba(255,255,255,.035);
 }
 
-/* =========================================================
-   MARKET SELECTOR
-   ========================================================= */
+/* ==============================
+   MARKET BAR
+   ============================== */
 
-.market-card {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-
-    padding: 10px;
-
-    margin-bottom: 12px;
+.market{
+    padding:9px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:9px;
+    margin-bottom:12px;
 }
 
-.market-box {
-    min-height: 63px;
+.market-box{
+    min-height:62px;
+    padding:9px 11px;
 
-    padding: 10px 12px;
-
-    border-radius: 13px;
+    border-radius:14px;
 
     background:
         linear-gradient(
             145deg,
-            rgba(10, 39, 65, .95),
-            rgba(7, 25, 44, .95)
+            rgba(9,39,64,.98),
+            rgba(7,25,43,.98)
         );
 
-    border: 1px solid #16517d;
+    border:1px solid #185276;
 }
 
-.market-label {
-    color: #8ca6bf;
-    font-size: 9px;
-    margin-bottom: 5px;
+.market-label{
+    color:#7d93aa;
+    font-size:8px;
+    letter-spacing:1.4px;
+    text-transform:uppercase;
+    margin-bottom:3px;
 }
 
-.market-value {
-    color: #ffffff;
-    font-size: 15px;
-    font-weight: 800;
+.market-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:5px;
 }
 
-.market-live {
-    color: #27f5a6;
-    font-size: 8px;
-    margin-left: 4px;
+select{
+    width:100%;
+    appearance:none;
+    -webkit-appearance:none;
+
+    border:0;
+    outline:0;
+
+    background:transparent;
+
+    color:white;
+
+    font-size:14px;
+    font-weight:800;
+
+    padding:2px 0;
 }
 
-/* =========================================================
-   STREAMLIT SELECTBOX
-   ========================================================= */
-
-.stSelectbox {
-    margin: 0 !important;
+select option{
+    background:#0b1727;
+    color:white;
 }
 
-.stSelectbox label {
-    display: none !important;
+.market-status{
+    color:#29f4a5;
+    font-size:7px;
+    margin-top:2px;
 }
 
-.stSelectbox div[data-baseweb="select"] {
-    margin: 0 !important;
-}
-
-.stSelectbox div[data-baseweb="select"] > div {
-    min-height: 38px !important;
-
-    background: transparent !important;
-
-    border: none !important;
-
-    padding: 0 2px !important;
-
-    box-shadow: none !important;
-}
-
-.stSelectbox div[data-baseweb="select"] span {
-    color: #ffffff !important;
-    font-size: 14px !important;
-    font-weight: 700 !important;
-}
-
-/* =========================================================
+/* ==============================
    SIGNAL CARD
-   ========================================================= */
+   ============================== */
 
-.signal-card {
-    position: relative;
+.signal-card{
+    position:relative;
+    overflow:hidden;
 
-    overflow: hidden;
+    min-height:545px;
 
-    padding: 17px 12px 13px;
+    padding:17px 12px 13px;
 
-    text-align: center;
-
-    min-height: 535px;
+    text-align:center;
 }
 
-/* =========================================================
-   BACKGROUND CHART
-   ========================================================= */
+/* ==============================
+   CHART
+   ============================== */
 
-.chart-background {
-    position: absolute;
+.chart{
+    position:absolute;
+    top:115px;
+    left:0;
 
-    left: 0;
-    right: 0;
+    width:100%;
+    height:220px;
 
-    top: 118px;
+    opacity:.42;
 
-    width: 100%;
-    height: 210px;
-
-    opacity: .35;
-
-    pointer-events: none;
+    pointer-events:none;
 }
 
-.chart-grid {
-    stroke: #1c587d;
-    stroke-width: 1;
-    opacity: .25;
+.grid{
+    stroke:#226082;
+    stroke-width:1;
+    opacity:.22;
 }
 
-.chart-line-green {
-    fill: none;
-    stroke: #1cf2a3;
-    stroke-width: 2;
+.green-line{
+    fill:none;
+    stroke:#22ef9e;
+    stroke-width:2;
 }
 
-.chart-line-red {
-    fill: none;
-    stroke: #ff3d70;
-    stroke-width: 2;
+.red-line{
+    fill:none;
+    stroke:#ff416e;
+    stroke-width:2;
 }
 
-.candle-green {
-    stroke: #1cf2a3;
-    fill: #1cf2a3;
+.candle-green{
+    stroke:#22ef9e;
+    fill:#22ef9e;
 }
 
-.candle-red {
-    stroke: #ff3d70;
-    fill: #ff3d70;
+.candle-red{
+    stroke:#ff416e;
+    fill:#ff416e;
 }
 
-/* =========================================================
-   WORLD MAP EFFECT
-   ========================================================= */
+/* ==============================
+   SIGNAL HEADER
+   ============================== */
 
-.map-dots {
-    position: absolute;
+.signal-label{
+    position:relative;
+    z-index:5;
 
-    left: 15px;
-    right: 15px;
+    color:#8ca1b7;
 
-    top: 125px;
-
-    height: 130px;
-
-    opacity: .12;
-
-    background-image:
-        radial-gradient(
-            circle,
-            #24f4b0 1px,
-            transparent 1px
-        );
-
-    background-size: 9px 9px;
-
-    mask-image:
-        linear-gradient(
-            90deg,
-            transparent,
-            black 15%,
-            black 85%,
-            transparent
-        );
-
-    pointer-events: none;
+    font-size:9px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
 }
 
-/* =========================================================
-   SIGNAL TEXT
-   ========================================================= */
+.asset-name{
+    position:relative;
+    z-index:5;
 
-.signal-label {
-    position: relative;
-    z-index: 4;
+    margin-top:4px;
 
-    color: #91a5ba;
-
-    font-size: 9px;
-
-    text-transform: uppercase;
-
-    letter-spacing: 1.5px;
+    font-size:22px;
+    font-weight:900;
 }
 
-.signal-asset {
-    position: relative;
-    z-index: 4;
+.time-label{
+    position:relative;
+    z-index:5;
 
-    margin-top: 4px;
+    margin-top:4px;
 
-    font-size: 22px;
+    color:#28f3a5;
 
-    font-weight: 900;
+    font-size:9px;
+    letter-spacing:1px;
 }
 
-.signal-time {
-    position: relative;
-    z-index: 4;
-
-    margin-top: 4px;
-
-    color: #26efa4;
-
-    font-size: 9px;
-
-    letter-spacing: 1px;
-}
-
-/* =========================================================
+/* ==============================
    SIGNAL CIRCLE
-   ========================================================= */
+   ============================== */
 
-.signal-circle {
-    position: relative;
-    z-index: 5;
+.signal-circle{
+    position:relative;
+    z-index:5;
 
-    width: 218px;
-    height: 218px;
+    width:214px;
+    height:214px;
 
-    margin: 23px auto 18px;
+    margin:23px auto 18px;
 
-    border-radius: 50%;
+    border-radius:50%;
 
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display:flex;
+    align-items:center;
+    justify-content:center;
 
     background:
         radial-gradient(
             circle,
-            rgba(34, 245, 164, .40) 0%,
-            rgba(15, 77, 65, .70) 34%,
-            rgba(4, 16, 28, .98) 72%
+            rgba(38,246,165,.43) 0%,
+            rgba(14,74,61,.70) 35%,
+            rgba(3,15,27,.98) 72%
         );
 
-    border: 3px solid #23f3a4;
+    border:3px solid #29f5a6;
 
     box-shadow:
-        0 0 10px #23f3a4,
-        0 0 32px rgba(35,243,164,.65),
-        0 0 80px rgba(35,243,164,.23),
-        inset 0 0 30px rgba(35,243,164,.28);
+        0 0 11px #29f5a6,
+        0 0 35px rgba(41,245,166,.65),
+        0 0 80px rgba(41,245,166,.22),
+        inset 0 0 32px rgba(41,245,166,.27);
+
+    transition:
+        .35s ease;
 }
 
-.signal-circle.sell {
+.signal-circle.sell{
     background:
         radial-gradient(
             circle,
-            rgba(255, 47, 101, .40) 0%,
-            rgba(82, 17, 42, .70) 34%,
-            rgba(4, 16, 28, .98) 72%
+            rgba(255,53,103,.42) 0%,
+            rgba(82,17,41,.72) 35%,
+            rgba(3,15,27,.98) 72%
         );
 
-    border-color: #ff376c;
+    border-color:#ff3d70;
 
     box-shadow:
-        0 0 10px #ff376c,
-        0 0 32px rgba(255,55,108,.65),
-        0 0 80px rgba(255,55,108,.23),
-        inset 0 0 30px rgba(255,55,108,.28);
+        0 0 11px #ff3d70,
+        0 0 35px rgba(255,61,112,.65),
+        0 0 80px rgba(255,61,112,.22),
+        inset 0 0 32px rgba(255,61,112,.27);
 }
 
-.signal-ring {
-    position: absolute;
+.inner-ring{
+    position:absolute;
 
-    width: 187px;
-    height: 187px;
+    width:183px;
+    height:183px;
 
-    border-radius: 50%;
+    border-radius:50%;
 
-    border: 1px solid rgba(255,255,255,.16);
+    border:1px solid rgba(255,255,255,.14);
 }
 
-.signal-arrow {
-    position: relative;
+.arrow{
+    position:relative;
+    z-index:2;
 
-    font-size: 82px;
+    font-size:83px;
+    line-height:1;
 
-    font-weight: 900;
-
-    line-height: 1;
-
-    color: #5cffba;
+    color:#5cffb8;
 
     text-shadow:
-        0 0 10px #2df5a8,
-        0 0 25px rgba(45,245,168,.85);
+        0 0 10px #29f5a6,
+        0 0 28px rgba(41,245,166,.85);
+
+    transition:.3s ease;
 }
 
-.signal-arrow.sell-arrow {
-    color: #ff668b;
+.arrow.sell{
+    color:#ff688d;
 
     text-shadow:
-        0 0 10px #ff3f72,
-        0 0 25px rgba(255,63,114,.85);
+        0 0 10px #ff3d70,
+        0 0 28px rgba(255,61,112,.85);
 }
 
-/* =========================================================
+/* ==============================
    SIGNAL TITLE
-   ========================================================= */
+   ============================== */
 
-.signal-title {
-    position: relative;
-    z-index: 5;
+.signal-title{
+    position:relative;
+    z-index:5;
 
-    font-size: 31px;
-
-    font-weight: 950;
-
-    letter-spacing: -.5px;
+    font-size:30px;
+    font-weight:950;
+    letter-spacing:-.4px;
 }
 
-.signal-title.buy {
-    color: #36f5aa;
+.signal-title.buy{
+    color:#35f4a9;
 
     text-shadow:
-        0 0 20px rgba(54,245,170,.25);
+        0 0 20px rgba(53,244,169,.3);
 }
 
-.signal-title.sell {
-    color: #ff416f;
+.signal-title.sell{
+    color:#ff416f;
 
     text-shadow:
-        0 0 20px rgba(255,65,111,.25);
+        0 0 20px rgba(255,65,111,.3);
 }
 
-.signal-direction {
-    position: relative;
-    z-index: 5;
+.direction{
+    position:relative;
+    z-index:5;
 
-    margin-top: 4px;
+    margin-top:4px;
 
-    color: #8a9bb0;
+    color:#8597ac;
 
-    font-size: 9px;
-
-    letter-spacing: 2px;
-
-    text-transform: uppercase;
+    font-size:9px;
+    letter-spacing:2px;
 }
 
-/* =========================================================
-   STATISTICS
-   ========================================================= */
+/* ==============================
+   STATS
+   ============================== */
 
-.stats-row {
-    position: relative;
-    z-index: 5;
+.stats{
+    position:relative;
+    z-index:5;
 
-    display: grid;
+    display:grid;
+    grid-template-columns:1fr 1fr;
 
-    grid-template-columns: 1fr 1fr;
+    gap:10px;
 
-    gap: 10px;
-
-    margin-top: 17px;
+    margin-top:17px;
 }
 
-.stat-card {
-    min-height: 101px;
+.stat{
+    min-height:99px;
 
-    padding: 14px 8px;
+    padding:13px 9px;
 
-    border-radius: 15px;
+    border-radius:15px;
 
     background:
         linear-gradient(
             145deg,
-            rgba(8, 29, 49, .96),
-            rgba(5, 18, 32, .96)
+            rgba(7,29,49,.98),
+            rgba(5,17,30,.98)
         );
 
-    border: 1px solid #15517a;
+    border:1px solid #17557d;
 }
 
-.stat-label {
-    color: #91a4b9;
+.stat-label{
+    color:#8296ad;
 
-    font-size: 10px;
+    font-size:9px;
+
+    text-transform:uppercase;
+
+    letter-spacing:.4px;
 }
 
-.stat-dots {
-    margin-top: 8px;
+.dots{
+    margin-top:8px;
 
-    font-size: 17px;
+    font-size:17px;
 
-    letter-spacing: 2px;
+    letter-spacing:1px;
 }
 
-.dot-green {
-    color: #24f5a4;
-
-    text-shadow:
-        0 0 10px rgba(36,245,164,.7);
+.green{
+    color:#29f5a6;
+    text-shadow:0 0 9px rgba(41,245,166,.7);
 }
 
-.dot-red {
-    color: #ff3b6d;
-
-    text-shadow:
-        0 0 10px rgba(255,59,109,.7);
+.red{
+    color:#ff416f;
+    text-shadow:0 0 9px rgba(255,65,111,.7);
 }
 
-.dot-empty {
-    color: #24384c;
+.empty{
+    color:#26394c;
 }
 
-.stat-bottom {
-    margin-top: 4px;
+.stat-number{
+    margin-top:3px;
 
-    color: #ffffff;
+    color:white;
 
-    font-size: 13px;
-
-    font-weight: 800;
+    font-size:13px;
+    font-weight:800;
 }
 
-.win-number {
-    margin-top: 8px;
+.win{
+    margin-top:7px;
 
-    color: #28f5a5;
+    color:#29f5a6;
 
-    font-size: 26px;
-
-    font-weight: 900;
+    font-size:25px;
+    font-weight:900;
 }
 
-.live-text {
-    margin-top: 2px;
+.no-data{
+    margin-top:3px;
 
-    color: #27f5a4;
+    color:#29f5a6;
 
-    font-size: 9px;
+    font-size:8px;
 }
 
-/* =========================================================
-   AI CARD
-   ========================================================= */
+/* ==============================
+   AI STATUS
+   ============================== */
 
-.ai-card {
-    position: relative;
-    z-index: 5;
+.ai{
+    position:relative;
+    z-index:5;
 
-    display: flex;
+    display:flex;
+    align-items:center;
 
-    align-items: center;
+    gap:11px;
 
-    gap: 12px;
+    margin-top:11px;
 
-    padding: 14px;
+    padding:13px;
 
-    margin-top: 11px;
+    text-align:left;
 
-    text-align: left;
-
-    border-radius: 15px;
+    border-radius:15px;
 
     background:
         linear-gradient(
             145deg,
-            rgba(7, 34, 45, .96),
-            rgba(5, 20, 32, .96)
+            rgba(7,37,47,.97),
+            rgba(5,19,31,.97)
         );
 
-    border: 1px solid rgba(31, 183, 153, .55);
+    border:1px solid rgba(31,181,150,.55);
 }
 
-.ai-icon {
-    width: 35px;
-    height: 35px;
+.ai-icon{
+    width:35px;
+    height:35px;
 
-    flex-shrink: 0;
+    flex-shrink:0;
 
-    border-radius: 50%;
+    border-radius:50%;
 
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display:flex;
+    align-items:center;
+    justify-content:center;
 
-    background: rgba(35,245,164,.15);
+    color:#2af5a5;
 
-    border: 1px solid rgba(35,245,164,.5);
+    background:rgba(42,245,165,.13);
 
-    color: #2af5a5;
+    border:1px solid rgba(42,245,165,.48);
 
-    font-size: 17px;
-
-    box-shadow:
-        0 0 15px rgba(35,245,164,.2);
+    box-shadow:0 0 15px rgba(42,245,165,.17);
 }
 
-.ai-title {
-    color: #2af5a5;
+.ai-title{
+    color:#2af5a5;
 
-    font-size: 12px;
+    font-size:11px;
 
-    font-weight: 900;
+    font-weight:900;
 }
 
-.ai-description {
-    margin-top: 3px;
+.ai-description{
+    color:#7f92a7;
 
-    color: #8497ac;
+    font-size:8px;
 
-    font-size: 9px;
+    margin-top:3px;
 }
 
-/* =========================================================
-   ACTION BUTTON
-   ========================================================= */
+/* ==============================
+   MAIN BUTTON
+   ============================== */
 
-.action-button {
-    position: relative;
-    z-index: 8;
+.generate{
+    width:100%;
 
-    margin-top: 11px;
-}
+    height:55px;
 
-/* =========================================================
-   STREAMLIT BUTTON
-   ========================================================= */
+    margin-top:11px;
 
-.stButton > button {
-    width: 100%;
+    border-radius:16px;
 
-    min-height: 53px;
-
-    border-radius: 15px !important;
-
-    border: 1px solid #4affbd !important;
+    border:1px solid #5affaF;
 
     background:
         linear-gradient(
             100deg,
-            #15cf8c,
-            #37f5ad
-        ) !important;
+            #13ca87,
+            #38f5ad
+        );
 
-    color: #03130d !important;
+    color:#03130d;
 
-    font-size: 14px !important;
+    font-size:14px;
 
-    font-weight: 900 !important;
+    font-weight:900;
 
-    letter-spacing: .2px;
-
-    box-shadow:
-        0 8px 30px rgba(32,245,165,.18);
-}
-
-.stButton > button:hover {
-    border-color: #73ffca !important;
-
-    color: #03130d !important;
+    cursor:pointer;
 
     box-shadow:
-        0 8px 35px rgba(32,245,165,.28);
+        0 8px 28px rgba(37,245,166,.20);
+
+    transition:.18s ease;
 }
 
-.stButton > button:active {
-    transform: scale(.985);
+.generate:active{
+    transform:scale(.98);
 }
 
-/* =========================================================
-   NAVIGATION
-   ========================================================= */
+.generate:hover{
+    filter:brightness(1.06);
+}
 
-.nav-wrap {
-    display: grid;
+/* ==============================
+   COUNTDOWN
+   ============================== */
+
+.countdown{
+    position:relative;
+    z-index:5;
+
+    display:none;
+
+    margin-top:8px;
+
+    color:#a6b6c9;
+
+    font-size:9px;
+}
+
+.countdown span{
+    color:#29f5a6;
+
+    font-weight:900;
+}
+
+/* ==============================
+   BOTTOM NAV
+   ============================== */
+
+.bottom{
+    display:grid;
 
     grid-template-columns:
-        repeat(4, 1fr);
+        repeat(4,1fr);
 
-    gap: 5px;
+    gap:4px;
 
-    margin-top: 14px;
+    margin-top:13px;
 
-    padding: 7px;
+    padding:7px;
 
-    border-radius: 18px;
+    border-radius:18px;
 
-    background:
-        rgba(5, 16, 29, .96);
+    background:rgba(4,15,27,.97);
 
-    border: 1px solid #16405e;
+    border:1px solid #173f5b;
 }
 
-.nav-item {
-    text-align: center;
+.nav{
+    text-align:center;
 
-    padding: 9px 3px;
+    padding:8px 2px;
 
-    border-radius: 12px;
+    border-radius:12px;
 
-    color: #72859d;
+    color:#71869d;
 
-    font-size: 9px;
+    font-size:8px;
+
+    cursor:pointer;
 }
 
-.nav-item.active {
-    color: #27f5a4;
+.nav.active{
+    color:#29f5a6;
 
     background:
         radial-gradient(
-            circle at 50% 50%,
-            rgba(34,245,164,.14),
-            transparent 70%
+            circle,
+            rgba(41,245,166,.12),
+            transparent 75%
         );
-
-    text-shadow:
-        0 0 12px rgba(34,245,164,.35);
 }
 
-.nav-icon {
-    display: block;
+.nav-icon{
+    display:block;
 
-    font-size: 20px;
+    font-size:19px;
 
-    line-height: 20px;
+    line-height:20px;
 
-    margin-bottom: 4px;
+    margin-bottom:3px;
 }
 
-/* =========================================================
+/* ==============================
    FOOTER
-   ========================================================= */
+   ============================== */
 
-.footer-text {
-    text-align: center;
+.footer{
+    text-align:center;
 
-    color: #53667c;
+    margin-top:9px;
 
-    font-size: 8px;
+    color:#4f647a;
 
-    margin-top: 10px;
+    font-size:7px;
 
-    letter-spacing: .4px;
+    letter-spacing:.5px;
 }
 
-/* =========================================================
-   HISTORY / PROFILE / LEARN
-   ========================================================= */
+/* ==============================
+   SMALL PHONES
+   ============================== */
 
-.page-card {
-    padding: 18px;
+@media(max-width:370px){
 
-    margin-bottom: 11px;
-}
-
-.page-title {
-    font-size: 25px;
-
-    font-weight: 900;
-
-    margin-bottom: 3px;
-}
-
-.page-subtitle {
-    color: #778ba2;
-
-    font-size: 11px;
-
-    margin-bottom: 15px;
-}
-
-.history-item {
-    display: flex;
-
-    justify-content: space-between;
-
-    align-items: center;
-
-    padding: 13px 3px;
-
-    border-bottom: 1px solid rgba(64,94,120,.25);
-}
-
-.history-left strong {
-    display: block;
-
-    font-size: 13px;
-}
-
-.history-left span {
-    color: #73879d;
-
-    font-size: 9px;
-}
-
-.history-win {
-    color: #29f5a5;
-
-    font-size: 10px;
-
-    font-weight: 900;
-}
-
-.history-loss {
-    color: #ff416f;
-
-    font-size: 10px;
-
-    font-weight: 900;
-}
-
-.info-icon {
-    font-size: 27px;
-
-    margin-bottom: 6px;
-}
-
-.profile-row {
-    padding: 15px 3px;
-
-    border-bottom: 1px solid rgba(64,94,120,.25);
-
-    font-size: 13px;
-
-    font-weight: 700;
-}
-
-.profile-row span {
-    float: right;
-
-    color: #647990;
-}
-
-/* =========================================================
-   MOBILE
-   ========================================================= */
-
-@media (max-width: 420px) {
-
-    .block-container {
-        padding-left: 10px !important;
-        padding-right: 10px !important;
+    .app{
+        padding-left:9px;
+        padding-right:9px;
     }
 
-    .signal-circle {
-        width: 198px;
-        height: 198px;
+    .signal-circle{
+        width:190px;
+        height:190px;
     }
 
-    .signal-ring {
-        width: 170px;
-        height: 170px;
+    .inner-ring{
+        width:163px;
+        height:163px;
     }
 
-    .signal-arrow {
-        font-size: 72px;
+    .arrow{
+        font-size:70px;
     }
 
-    .signal-title {
-        font-size: 28px;
+    .signal-title{
+        font-size:27px;
     }
 
 }
 
 </style>
-""", unsafe_allow_html=True)
+</head>
 
+<body>
 
-# ============================================================
-# TOP HEADER
-# ============================================================
+<div class="app">
 
-st.markdown("""
-<div class="xiga-header">
+    <!-- ================= HEADER ================= -->
 
-    <div class="xiga-menu">☰</div>
+    <div class="topbar">
 
-    <div class="xiga-brand">
-        <div class="xiga-logo">
-            <span class="xiga-logo-icon">▰</span>
-            <span>XIGA</span>
+        <div class="menu">
+            ☰
         </div>
 
-        <div class="xiga-brand-sub">
-            TRADING SIGNAL BOT
-        </div>
-    </div>
+        <div class="brand">
 
-    <div class="xiga-pro">
-        👑 PRO
-    </div>
-
-</div>
-""", unsafe_allow_html=True)
-
-
-# ============================================================
-# NAVIGATION BUTTONS
-# Unique keys prevent duplicate-element errors.
-# ============================================================
-
-n1, n2, n3, n4 = st.columns(4)
-
-with n1:
-    if st.button("📈 Trade", key="nav_trade", use_container_width=True):
-        st.session_state.page = "Trade"
-
-with n2:
-    if st.button("◷ History", key="nav_history", use_container_width=True):
-        st.session_state.page = "History"
-
-with n3:
-    if st.button("▣ Learn", key="nav_learn", use_container_width=True):
-        st.session_state.page = "Learn"
-
-with n4:
-    if st.button("♙ Profile", key="nav_profile", use_container_width=True):
-        st.session_state.page = "Profile"
-
-
-# ============================================================
-# TRADE PAGE
-# ============================================================
-
-if st.session_state.page == "Trade":
-
-    # --------------------------------------------------------
-    # MARKET CARD
-    # --------------------------------------------------------
-
-    st.markdown(
-        '<div class="glass market-card">',
-        unsafe_allow_html=True
-    )
-
-    m1, m2 = st.columns(2)
-
-    with m1:
-
-        st.markdown(
-            """
-            <div class="market-box">
-                <div class="market-label">ASSET</div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        asset = st.selectbox(
-            "asset",
-            [
-                "🇺🇸 🇪🇺  EUR/USD",
-                "🇬🇧 🇺🇸  GBP/USD",
-                "🇺🇸 🇯🇵  USD/JPY",
-                "🇦🇺 🇺🇸  AUD/USD",
-                "🇺🇸 🇨🇦  USD/CAD",
-                "🥇  XAU/USD"
-            ],
-            key="asset_select",
-            label_visibility="collapsed"
-        )
-
-        st.markdown(
-            '<span class="market-live">● MARKET</span></div>',
-            unsafe_allow_html=True
-        )
-
-    with m2:
-
-        st.markdown(
-            """
-            <div class="market-box">
-                <div class="market-label">TIMEFRAME</div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        timeframe = st.selectbox(
-            "timeframe",
-            [
-                "10 SEC",
-                "15 SEC",
-                "30 SEC",
-                "1 MIN",
-                "5 MIN"
-            ],
-            key="timeframe_select",
-            label_visibility="collapsed"
-        )
-
-        st.markdown(
-            '<span class="market-live">● READY</span></div>',
-            unsafe_allow_html=True
-        )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # --------------------------------------------------------
-    # SIGNAL
-    # --------------------------------------------------------
-
-    signal = st.session_state.signal
-
-    if signal is None:
-
-        signal = "READY"
-
-    # --------------------------------------------------------
-    # GENERATE SIGNAL
-    #
-    # This is only a visual demo.
-    # It does NOT use market data.
-    # --------------------------------------------------------
-
-    if st.button(
-        "⚡  GENERATE NEW SIGNAL",
-        key="generate_signal",
-        use_container_width=True
-    ):
-
-        st.session_state.signal = random.choice(
-            ["CALL", "PUT"]
-        )
-
-        st.session_state.strength = random.choice(
-            [3, 4, 4, 5]
-        )
-
-        st.session_state.signal_time = datetime.now()
-
-        st.rerun()
-
-    signal = st.session_state.signal
-
-    # --------------------------------------------------------
-    # SIGNAL CARD
-    # --------------------------------------------------------
-
-    if signal == "CALL":
-
-        circle_class = ""
-        arrow_class = ""
-        arrow = "↗"
-        title = "BUY (CALL)"
-        title_class = "buy"
-        direction = "UPWARD TREND"
-
-        filled_color = "dot-green"
-
-    elif signal == "PUT":
-
-        circle_class = "sell"
-        arrow_class = "sell-arrow"
-        arrow = "↘"
-        title = "SELL (PUT)"
-        title_class = "sell"
-        direction = "DOWNWARD TREND"
-
-        filled_color = "dot-red"
-
-    else:
-
-        circle_class = ""
-        arrow_class = ""
-        arrow = "⌁"
-        title = "AI READY"
-        title_class = "buy"
-        direction = "WAITING FOR ANALYSIS"
-
-        filled_color = "dot-green"
-
-    strength = st.session_state.strength
-
-    filled = "● " * strength
-    empty = "● " * (5 - strength)
-
-    # --------------------------------------------------------
-    # CHART + SIGNAL
-    # --------------------------------------------------------
-
-    st.markdown(
-        f"""
-<div class="glass signal-card">
-
-<svg class="chart-background"
-     viewBox="0 0 500 210"
-     preserveAspectRatio="none">
-
-    <line class="chart-grid"
-          x1="0" y1="40"
-          x2="500" y2="40"/>
-
-    <line class="chart-grid"
-          x1="0" y1="90"
-          x2="500" y2="90"/>
-
-    <line class="chart-grid"
-          x1="0" y1="140"
-          x2="500" y2="140"/>
-
-    <line class="chart-grid"
-          x1="0" y1="190"
-          x2="500" y2="190"/>
-
-    <!-- candles -->
-
-    <line class="candle-green"
-          x1="35" y1="135"
-          x2="35" y2="80"/>
-
-    <rect class="candle-green"
-          x="29" y="95"
-          width="12"
-          height="30"
-          rx="2"/>
-
-    <line class="candle-red"
-          x1="72" y1="120"
-          x2="72" y2="70"/>
-
-    <rect class="candle-red"
-          x="66" y="82"
-          width="12"
-          height="25"
-          rx="2"/>
-
-    <line class="candle-green"
-          x1="108" y1="105"
-          x2="108" y2="50"/>
-
-    <rect class="candle-green"
-          x="102" y="65"
-          width="12"
-          height="30"
-          rx="2"/>
-
-    <line class="candle-green"
-          x1="145" y1="90"
-          x2="145" y2="35"/>
-
-    <rect class="candle-green"
-          x="139" y="45"
-          width="12"
-          height="30"
-          rx="2"/>
-
-    <line class="candle-red"
-          x1="182" y1="100"
-          x2="182" y2="45"/>
-
-    <rect class="candle-red"
-          x="176" y="55"
-          width="12"
-          height="28"
-          rx="2"/>
-
-    <line class="candle-green"
-          x1="220" y1="82"
-          x2="220" y2="25"/>
-
-    <rect class="candle-green"
-          x="214" y="34"
-          width="12"
-          height="33"
-          rx="2"/>
-
-    <line class="candle-green"
-          x1="258" y1="72"
-          x2="258" y2="15"/>
-
-    <rect class="candle-green"
-          x="252" y="25"
-          width="12"
-          height="30"
-          rx="2"/>
-
-    <line class="candle-red"
-          x1="295" y1="85"
-          x2="295" y2="30"/>
-
-    <rect class="candle-red"
-          x="289" y="42"
-          width="12"
-          height="28"
-          rx="2"/>
-
-    <line class="candle-green"
-          x1="333" y1="65"
-          x2="333" y2="10"/>
-
-    <rect class="candle-green"
-          x="327" y="20"
-          width="12"
-          height="30"
-          rx="2"/>
-
-    <line class="candle-green"
-          x1="370" y1="55"
-          x2="370" y2="5"/>
-
-    <rect class="candle-green"
-          x="364" y="12"
-          width="12"
-          height="29"
-          rx="2"/>
-
-    <line class="candle-red"
-          x1="408" y1="68"
-          x2="408" y2="15"/>
-
-    <rect class="candle-red"
-          x="402" y="25"
-          width="12"
-          height="29"
-          rx="2"/>
-
-    <line class="candle-green"
-          x1="446" y1="45"
-          x2="446" y2="0"/>
-
-    <rect class="candle-green"
-          x="440" y="8"
-          width="12"
-          height="25"
-          rx="2"/>
-
-    <polyline
-        class="chart-line-green"
-        points="
-        0,155
-        35,132
-        72,143
-        108,106
-        145,92
-        182,106
-        220,78
-        258,68
-        295,82
-        333,54
-        370,42
-        408,57
-        446,25
-        500,10"/>
-
-</svg>
-
-<div class="map-dots"></div>
-
-<div class="signal-label">
-    SIGNAL FOR
-</div>
-
-<div class="signal-asset">
-    {asset}
-</div>
-
-<div class="signal-time">
-    ● TIMEFRAME: {timeframe}
-</div>
-
-<div class="signal-circle {circle_class}">
-    <div class="signal-ring"></div>
-    <div class="signal-arrow {arrow_class}">
-        {arrow}
-    </div>
-</div>
-
-<div class="signal-title {title_class}">
-    {title}
-</div>
-
-<div class="signal-direction">
-    {direction}
-</div>
-
-<div class="stats-row">
-
-    <div class="stat-card">
-
-        <div class="stat-label">
-            Signal Strength
-        </div>
-
-        <div class="stat-dots {filled_color}">
-            {filled}<span class="dot-empty">{empty}</span>
-        </div>
-
-        <div class="stat-bottom">
-            {strength}/5
-        </div>
-
-    </div>
-
-    <div class="stat-card">
-
-        <div class="stat-label">
-            Win Rate
-        </div>
-
-        <div class="win-number">
-            —
-        </div>
-
-        <div class="live-text">
-            ● NO DATA YET
-        </div>
-
-    </div>
-
-</div>
-
-<div class="ai-card">
-
-    <div class="ai-icon">
-        ✓
-    </div>
-
-    <div>
-
-        <div class="ai-title">
-            AI ANALYSIS COMPLETE
-        </div>
-
-        <div class="ai-description">
-            {("Demo signal — live market engine will be connected next."
-             if signal != "READY"
-             else "Select your market and start analysis.")}
-        </div>
-
-    </div>
-
-</div>
-
-</div>
-""",
-        unsafe_allow_html=True
-    )
-
-    # --------------------------------------------------------
-    # SECOND ACTION BUTTON
-    # --------------------------------------------------------
-
-    if signal is not None:
-
-        if st.button(
-            "↻  GENERATE NEW SIGNAL",
-            key="new_signal",
-            use_container_width=True
-        ):
-
-            st.session_state.signal = random.choice(
-                ["CALL", "PUT"]
-            )
-
-            st.session_state.strength = random.choice(
-                [3, 4, 4, 5]
-            )
-
-            st.session_state.signal_time = datetime.now()
-
-            st.rerun()
-
-    # --------------------------------------------------------
-    # DISCLAIMER
-    # --------------------------------------------------------
-
-    st.markdown(
-        """
-        <div class="footer-text">
-            ⚠ DEMO MODE • SIGNALS ARE SIMULATED •
-            NO LIVE MARKET DATA
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# ============================================================
-# HISTORY PAGE
-# ============================================================
-
-elif st.session_state.page == "History":
-
-    st.markdown("""
-    <div class="glass page-card">
-
-        <div class="page-title">
-            Signal History
-        </div>
-
-        <div class="page-subtitle">
-            Track your generated signals
-        </div>
-
-        <div class="history-item">
-
-            <div class="history-left">
-                <strong>EUR/USD</strong>
-                <span>BUY • 30 SEC</span>
+            <div class="brand-title">
+                <span>▰</span> XIGA
             </div>
 
-            <div class="history-win">
-                DEMO
+            <div class="brand-subtitle">
+                TRADING SIGNAL BOT
             </div>
 
         </div>
 
-        <div class="history-item">
+        <div class="pro">
+            👑 PRO
+        </div>
 
-            <div class="history-left">
-                <strong>GBP/USD</strong>
-                <span>SELL • 1 MIN</span>
+    </div>
+
+
+    <!-- ================= MARKET ================= -->
+
+    <div class="glass market">
+
+        <div class="market-box">
+
+            <div class="market-label">
+                Asset
             </div>
 
-            <div class="history-loss">
-                DEMO
+            <select id="asset">
+
+                <option>🇺🇸 🇪🇺  EUR/USD</option>
+                <option>🇬🇧 🇺🇸  GBP/USD</option>
+                <option>🇺🇸 🇯🇵  USD/JPY</option>
+                <option>🇦🇺 🇺🇸  AUD/USD</option>
+                <option>🇺🇸 🇨🇦  USD/CAD</option>
+                <option>🥇  XAU/USD</option>
+
+            </select>
+
+            <div class="market-status">
+                ● MARKET READY
             </div>
 
         </div>
 
-        <div class="history-item">
 
-            <div class="history-left">
-                <strong>XAU/USD</strong>
-                <span>BUY • 1 MIN</span>
+        <div class="market-box">
+
+            <div class="market-label">
+                Timeframe
             </div>
 
-            <div class="history-win">
-                DEMO
+            <select id="timeframe">
+
+                <option>10 SEC</option>
+                <option>15 SEC</option>
+                <option>30 SEC</option>
+                <option>1 MIN</option>
+                <option>5 MIN</option>
+
+            </select>
+
+            <div class="market-status">
+                ● ANALYSIS READY
             </div>
 
         </div>
 
     </div>
-    """, unsafe_allow_html=True)
 
 
-# ============================================================
-# LEARN PAGE
-# ============================================================
+    <!-- ================= SIGNAL ================= -->
 
-elif st.session_state.page == "Learn":
+    <div class="glass signal-card">
 
-    st.markdown("""
-    <div class="glass page-card">
 
-        <div class="page-title">
-            Learn
+        <!-- CHART -->
+
+        <svg
+            class="chart"
+            viewBox="0 0 500 220"
+            preserveAspectRatio="none"
+        >
+
+            <line class="grid"
+                x1="0" y1="35"
+                x2="500" y2="35"/>
+
+            <line class="grid"
+                x1="0" y1="85"
+                x2="500" y2="85"/>
+
+            <line class="grid"
+                x1="0" y1="135"
+                x2="500" y2="135"/>
+
+            <line class="grid"
+                x1="0" y1="185"
+                x2="500" y2="185"/>
+
+
+            <polyline
+                class="green-line"
+                points="
+                0,175
+                35,155
+                65,165
+                100,130
+                135,145
+                170,105
+                205,120
+                240,80
+                275,100
+                310,65
+                345,75
+                380,42
+                420,60
+                460,28
+                500,12"
+            />
+
+
+            <polyline
+                class="red-line"
+                points="
+                0,183
+                55,172
+                90,180
+                125,148
+                160,160
+                205,125
+                250,138
+                290,102
+                330,110
+                375,75
+                420,90
+                455,55
+                500,43"
+            />
+
+
+            <!-- candles -->
+
+            <line class="candle-green"
+                x1="35" y1="180"
+                x2="35" y2="135"/>
+
+            <rect class="candle-green"
+                x="29" y="145"
+                width="12"
+                height="25"
+                rx="2"/>
+
+
+            <line class="candle-red"
+                x1="72" y1="170"
+                x2="72" y2="125"/>
+
+            <rect class="candle-red"
+                x="66" y="135"
+                width="12"
+                height="25"
+                rx="2"/>
+
+
+            <line class="candle-green"
+                x1="110" y1="150"
+                x2="110" y2="105"/>
+
+            <rect class="candle-green"
+                x="104" y="115"
+                width="12"
+                height="25"
+                rx="2"/>
+
+
+            <line class="candle-green"
+                x1="148" y1="135"
+                x2="148" y2="88"/>
+
+            <rect class="candle-green"
+                x="142" y="98"
+                width="12"
+                height="25"
+                rx="2"/>
+
+
+            <line class="candle-red"
+                x1="186" y1="145"
+                x2="186" y2="95"/>
+
+            <rect class="candle-red"
+                x="180" y="105"
+                width="12"
+                height="28"
+                rx="2"/>
+
+
+            <line class="candle-green"
+                x1="224" y1="115"
+                x2="224" y2="65"/>
+
+            <rect class="candle-green"
+                x="218" y="75"
+                width="12"
+                height="28"
+                rx="2"/>
+
+
+            <line class="candle-green"
+                x1="262" y1="105"
+                x2="262" y2="50"/>
+
+            <rect class="candle-green"
+                x="256" y="58"
+                width="12"
+                height="30"
+                rx="2"/>
+
+
+            <line class="candle-red"
+                x1="300" y1="115"
+                x2="300" y2="62"/>
+
+            <rect class="candle-red"
+                x="294" y="72"
+                width="12"
+                height="28"
+                rx="2"/>
+
+
+            <line class="candle-green"
+                x1="338" y1="85"
+                x2="338" y2="38"/>
+
+            <rect class="candle-green"
+                x="332" y="45"
+                width="12"
+                height="27"
+                rx="2"/>
+
+
+            <line class="candle-green"
+                x1="376" y1="70"
+                x2="376" y2="25"/>
+
+            <rect class="candle-green"
+                x="370" y="31"
+                width="12"
+                height="27"
+                rx="2"/>
+
+
+            <line class="candle-red"
+                x1="414" y1="82"
+                x2="414" y2="35"/>
+
+            <rect class="candle-red"
+                x="408" y="43"
+                width="12"
+                height="26"
+                rx="2"/>
+
+
+            <line class="candle-green"
+                x1="452" y1="52"
+                x2="452" y2="10"/>
+
+            <rect class="candle-green"
+                x="446" y="17"
+                width="12"
+                height="25"
+                rx="2"/>
+
+        </svg>
+
+
+        <!-- SIGNAL HEADER -->
+
+        <div class="signal-label">
+            SIGNAL FOR
         </div>
 
-        <div class="page-subtitle">
-            How the XIGA analysis engine will work
+        <div
+            class="asset-name"
+            id="signalAsset"
+        >
+            EUR/USD
         </div>
 
-        <div class="profile-row">
-            📊 Market Trend
-            <span>›</span>
+        <div
+            class="time-label"
+            id="signalTime"
+        >
+            ● TIMEFRAME: 10 SEC
         </div>
 
-        <div class="profile-row">
-            📈 Technical Indicators
-            <span>›</span>
+
+        <!-- SIGNAL CIRCLE -->
+
+        <div
+            class="signal-circle"
+            id="signalCircle"
+        >
+
+            <div class="inner-ring"></div>
+
+            <div
+                class="arrow"
+                id="arrow"
+            >
+                ◇
+            </div>
+
         </div>
 
-        <div class="profile-row">
-            🎯 Signal Filtering
-            <span>›</span>
+
+        <!-- TITLE -->
+
+        <div
+            class="signal-title buy"
+            id="signalTitle"
+        >
+            AI READY
         </div>
 
-        <div class="profile-row">
-            📚 Performance Tracking
-            <span>›</span>
+        <div
+            class="direction"
+            id="direction"
+        >
+            WAITING FOR ANALYSIS
         </div>
 
-        <div class="profile-row">
-            🧠 AI Confirmation
-            <span>›</span>
+
+        <!-- STATS -->
+
+        <div class="stats">
+
+
+            <div class="stat">
+
+                <div class="stat-label">
+                    Signal Strength
+                </div>
+
+                <div
+                    class="dots green"
+                    id="strengthDots"
+                >
+                    ● ● ● ●
+                    <span class="empty">●</span>
+                </div>
+
+                <div
+                    class="stat-number"
+                    id="strengthText"
+                >
+                    4/5
+                </div>
+
+            </div>
+
+
+            <div class="stat">
+
+                <div class="stat-label">
+                    Win Rate
+                </div>
+
+                <div
+                    class="win"
+                    id="winRate"
+                >
+                    —
+                </div>
+
+                <div class="no-data">
+                    ● NO REAL DATA YET
+                </div>
+
+            </div>
+
         </div>
 
-    </div>
-    """, unsafe_allow_html=True)
 
+        <!-- AI -->
 
-# ============================================================
-# PROFILE PAGE
-# ============================================================
+        <div class="ai">
 
-elif st.session_state.page == "Profile":
-
-    st.markdown("""
-    <div class="glass page-card">
-
-        <div style="
-            display:flex;
-            align-items:center;
-            gap:15px;
-            padding:5px 0 18px;
-        ">
-
-            <div style="
-                width:60px;
-                height:60px;
-                border-radius:50%;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                background:#102b45;
-                border:1px solid #24658e;
-                font-size:28px;
-            ">
-                👤
+            <div class="ai-icon">
+                ✓
             </div>
 
             <div>
 
-                <div style="
-                    font-size:18px;
-                    font-weight:900;
-                ">
-                    XIGA Trader
+                <div
+                    class="ai-title"
+                    id="aiTitle"
+                >
+                    AI ENGINE READY
                 </div>
 
-                <div style="
-                    color:#29f5a4;
-                    font-size:10px;
-                    margin-top:4px;
-                ">
-                    👑 FREE PLAN
+                <div
+                    class="ai-description"
+                    id="aiDescription"
+                >
+                    Select an asset and start analysis
                 </div>
 
             </div>
 
         </div>
 
-        <div class="profile-row">
-            👑 Upgrade to Pro
-            <span>›</span>
+
+    </div>
+
+
+    <!-- ================= ACTION ================= -->
+
+    <button
+        class="generate"
+        id="generate"
+    >
+        ⚡ ANALYZE MARKET
+    </button>
+
+
+    <div
+        class="countdown"
+        id="countdown"
+    >
+        Signal generated • Expires in
+        <span id="seconds">15</span>s
+    </div>
+
+
+    <!-- ================= NAV ================= -->
+
+    <div class="bottom">
+
+        <div
+            class="nav active"
+            onclick="setNav(this)"
+        >
+            <span class="nav-icon">⌁</span>
+            Trade
         </div>
 
-        <div class="profile-row">
-            ⚙ Settings
-            <span>›</span>
+        <div
+            class="nav"
+            onclick="setNav(this)"
+        >
+            <span class="nav-icon">◷</span>
+            History
         </div>
 
-        <div class="profile-row">
-            🔔 Notifications
-            <span>›</span>
+        <div
+            class="nav"
+            onclick="setNav(this)"
+        >
+            <span class="nav-icon">▣</span>
+            Learn
         </div>
 
-        <div class="profile-row">
-            🔒 Security
-            <span>›</span>
-        </div>
-
-        <div class="profile-row">
-            ❓ Help & Support
-            <span>›</span>
-        </div>
-
-        <div class="profile-row">
-            ℹ About XIGA
-            <span>›</span>
+        <div
+            class="nav"
+            onclick="setNav(this)"
+        >
+            <span class="nav-icon">♙</span>
+            Profile
         </div>
 
     </div>
-    """, unsafe_allow_html=True)
 
 
-# ============================================================
-# FOOTER
-# ============================================================
+    <div class="footer">
+        🔒 SECURE • XIGA AI • V4.0 • DEMO MODE
+    </div>
 
-st.markdown("""
-<div class="footer-text">
-    🔒 SECURE &nbsp; • &nbsp;
-    XIGA AI &nbsp; • &nbsp;
-    v3.0
 </div>
-""", unsafe_allow_html=True)
+
+
+<script>
+
+/* ==========================================
+   ELEMENTS
+   ========================================== */
+
+const asset = document.getElementById("asset");
+const timeframe = document.getElementById("timeframe");
+
+const signalAsset = document.getElementById("signalAsset");
+const signalTime = document.getElementById("signalTime");
+
+const signalCircle = document.getElementById("signalCircle");
+const arrow = document.getElementById("arrow");
+
+const signalTitle = document.getElementById("signalTitle");
+const direction = document.getElementById("direction");
+
+const strengthDots = document.getElementById("strengthDots");
+const strengthText = document.getElementById("strengthText");
+
+const aiTitle = document.getElementById("aiTitle");
+const aiDescription = document.getElementById("aiDescription");
+
+const generate = document.getElementById("generate");
+
+const countdown = document.getElementById("countdown");
+const seconds = document.getElementById("seconds");
+
+
+/* ==========================================
+   UPDATE MARKET DISPLAY
+   ========================================== */
+
+function updateMarket(){
+
+    let cleanAsset = asset.value
+        .replace("🇺🇸 🇪🇺  ","")
+        .replace("🇬🇧 🇺🇸  ","")
+        .replace("🇺🇸 🇯🇵  ","")
+        .replace("🇦🇺 🇺🇸  ","")
+        .replace("🇺🇸 🇨🇦  ","")
+        .replace("🥇  ","");
+
+    signalAsset.innerText = cleanAsset;
+
+    signalTime.innerText =
+        "● TIMEFRAME: " + timeframe.value;
+}
+
+asset.addEventListener("change", updateMarket);
+timeframe.addEventListener("change", updateMarket);
+
+
+/* ==========================================
+   SIGNAL GENERATOR
+   ========================================== */
+
+let timer = null;
+
+generate.addEventListener("click", function(){
+
+    updateMarket();
+
+    /* visual processing */
+
+    generate.innerText = "◌ ANALYZING MARKET...";
+    generate.disabled = true;
+
+    aiTitle.innerText = "AI ANALYZING...";
+    aiDescription.innerText =
+        "Processing market conditions...";
+
+    signalTitle.innerText = "ANALYZING";
+    signalTitle.className =
+        "signal-title buy";
+
+    direction.innerText =
+        "PROCESSING MARKET DATA";
+
+    arrow.innerText = "◌";
+
+    setTimeout(function(){
+
+        const signal =
+            Math.random() < 0.5
+            ? "CALL"
+            : "PUT";
+
+        const strength =
+            Math.floor(Math.random()*3)+3;
+
+        showSignal(signal,strength);
+
+        generate.disabled = false;
+        generate.innerText =
+            "↻ GENERATE NEW SIGNAL";
+
+    },1200);
+
+});
+
+
+/* ==========================================
+   SHOW SIGNAL
+   ========================================== */
+
+function showSignal(signal,strength){
+
+    signalCircle.classList.remove("sell");
+    arrow.classList.remove("sell");
+    signalTitle.classList.remove("sell");
+    signalTitle.classList.remove("buy");
+
+    if(signal === "CALL"){
+
+        arrow.innerText = "↗";
+
+        signalTitle.innerText =
+            "BUY (CALL)";
+
+        signalTitle.classList.add("buy");
+
+        direction.innerText =
+            "UPWARD SIGNAL";
+
+        aiTitle.innerText =
+            "AI ANALYSIS COMPLETE";
+
+        aiDescription.innerText =
+            "Demo signal generated successfully";
+
+    }else{
+
+        signalCircle.classList.add("sell");
+        arrow.classList.add("sell");
+
+        arrow.innerText = "↘";
+
+        signalTitle.innerText =
+            "SELL (PUT)";
+
+        signalTitle.classList.add("sell");
+
+        direction.innerText =
+            "DOWNWARD SIGNAL";
+
+        aiTitle.innerText =
+            "AI ANALYSIS COMPLETE";
+
+        aiDescription.innerText =
+            "Demo signal generated successfully";
+
+    }
+
+
+    /* strength */
+
+    let filled = "";
+
+    for(let i=0;i<strength;i++){
+        filled += "● ";
+    }
+
+    let empty = "";
+
+    for(let i=strength;i<5;i++){
+        empty += "● ";
+    }
+
+    strengthDots.innerHTML =
+        filled +
+        '<span class="empty">' +
+        empty +
+        '</span>';
+
+    strengthText.innerText =
+        strength + "/5";
+
+
+    /* countdown */
+
+    let count = 15;
+
+    seconds.innerText = count;
+
+    countdown.style.display = "block";
+
+    if(timer){
+        clearInterval(timer);
+    }
+
+    timer = setInterval(function(){
+
+        count--;
+
+        seconds.innerText = count;
+
+        if(count <= 0){
+
+            clearInterval(timer);
+
+            countdown.style.display =
+                "none";
+
+        }
+
+    },1000);
+
+}
+
+
+/* ==========================================
+   NAVIGATION VISUAL
+   ========================================== */
+
+function setNav(element){
+
+    document
+        .querySelectorAll(".nav")
+        .forEach(function(item){
+
+            item.classList.remove("active");
+
+        });
+
+    element.classList.add("active");
+
+}
+
+</script>
+
+</body>
+</html>
+"""
+
+components.html(
+    APP,
+    height=900,
+    scrolling=False
+)
