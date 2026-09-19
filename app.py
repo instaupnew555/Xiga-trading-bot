@@ -2200,25 +2200,14 @@ component_data = {
 
 xiga_component = xiga_component(
     data=component_data,
-
-    default={
-        "page":
-            st.session_state.page
-    },
-
-    on_analyze_change=
-        analyze_callback,
-
-    on_navigation_change=
-        navigation_callback,
-
+    default={"page": st.session_state.page},
+    on_page_change=lambda: None,
+    on_analyze_change=analyze_callback,
+    on_navigation_change=navigation_callback,
     key="xiga_component",
-
     width="stretch",
-
     height=900
 )
-
 
 # ============================================================
 # HISTORY / LEARN / PROFILE
