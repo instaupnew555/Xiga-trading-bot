@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-from streamlit_autorefresh import st_autorefresh
 from datetime import datetime
 
 st.set_page_config(page_title="XIGA Trading", page_icon="📈", layout="centered", initial_sidebar_state="collapsed")
@@ -335,18 +334,30 @@ def update_pending_results():
     return changed
 
 
-# Robust full-page polling.
-# Unlike a fragment, this reruns the entire app every 15 seconds,
-# so the visible WIN/LOSS and win-rate widgets always recalculate.
-st_autorefresh(
-    interval=15_000,
-    limit=None,
-    key="xiga_market_result_refresh",
-)
+# Automatic result checking using Streamlit's built-in fragment.
+# No extra package is required.
+try:
+    fragment = st.fragment
+except AttributeError:
+    fragment = None
 
-# Check pending results before rendering the visible UI.
-if update_pending_results():
-    st.rerun()
+
+def run_tracker():
+    if update_pending_results():
+        try:
+            st.rerun(scope="app")
+        except TypeError:
+            st.rerun()
+
+
+if fragment:
+    @st.fragment(run_every="15s")
+    def auto_tracker():
+        run_tracker()
+
+    auto_tracker()
+else:
+    run_tracker()
 
 
 # ---------------- CSS: ORIGINAL DESIGN ----------------
