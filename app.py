@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 st.set_page_config(page_title="XIGA Trading", page_icon="📈", layout="centered", initial_sidebar_state="collapsed")
 
@@ -34,7 +34,7 @@ def get_candles(symbol, interval, outputsize=100):
     key = get_api_key()
     if not key: return [], "API KEY NOT FOUND"
     try:
-        r = requests.get("https://api.twelvedata.com/time_series", params={"symbol":symbol,"interval":interval,"outputsize":outputsize,"format":"JSON"}, headers={"Authorization":"apikey " + key}, timeout=15)
+        r = requests.get("https://api.twelvedata.com/time_series", params={"symbol":symbol,"interval":interval,"outputsize":outputsize,"format":"JSON","timezone":"UTC"}, headers={"Authorization":"apikey " + key}, timeout=15)
         data = r.json()
         if r.status_code != 200: return [], f"API ERROR: {data.get('message',r.status_code)}"
         if data.get("status") == "error": return [], data.get("message","TWELVE DATA ERROR")
@@ -209,28 +209,35 @@ def analyze_market(symbol, timeframe):
     }
 
 
+
 # ---------------- AUTOMATIC RESULT TRACKING ----------------
 def parse_candle_time(value):
     if not value:
         return None
-
     text = str(value).strip().replace("Z", "+00:00")
-
     try:
-        return datetime.fromisoformat(text)
+        dt = datetime.fromisoformat(text)
     except ValueError:
+        dt = None
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
-                return datetime.strptime(str(value).strip(), fmt)
+                dt = datetime.strptime(str(value).strip(), fmt)
+                break
             except ValueError:
                 pass
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
-    return None
+
+def interval_duration(interval):
+    return timedelta(minutes=5) if interval == "5min" else timedelta(minutes=1)
 
 
 def update_pending_results():
     changed = False
-
     pending = [
         item for item in st.session_state.history
         if item.get("status") == "PENDING"
@@ -239,125 +246,200 @@ def update_pending_results():
         and item.get("timeframe") in TIMEFRAMES
         and item.get("entry_candle_time")
     ]
-
     if not pending:
         return False
 
     groups = {}
-
     for item in pending:
-        key = (
-            item["symbol"],
-            TIMEFRAMES[item["timeframe"]],
-        )
+        key = (item["symbol"], TIMEFRAMES[item["timeframe"]])
         groups.setdefault(key, []).append(item)
 
+    now_utc = datetime.now(timezone.utc)
+
     for (symbol, interval), items in groups.items():
-
-        candles, _ = get_candles(
-            symbol,
-            interval,
-            outputsize=10,
-        )
-
-        if len(candles) < 3:
+        candles, _ = get_candles(symbol, interval, outputsize=10)
+        if not candles:
             continue
 
-        parsed_times = [
-            parse_candle_time(candle.get("datetime"))
-            for candle in candles
-        ]
+        parsed = [parse_candle_time(c.get("datetime")) for c in candles]
 
         for item in items:
-
-            entry_time = parse_candle_time(
-                item["entry_candle_time"]
-            )
-
+            entry_time = parse_candle_time(item.get("entry_candle_time"))
             if entry_time is None:
                 continue
 
-            # Find candles strictly newer than the completed
-            # candle used to generate the signal.
-            newer = [
-                index
-                for index, candle_time in enumerate(parsed_times)
-                if candle_time is not None
-                and candle_time > entry_time
+            candidates = [
+                (i, t) for i, t in enumerate(parsed)
+                if t is not None and t > entry_time
             ]
-
-            if not newer:
+            if not candidates:
                 continue
 
-            # The first newer candle is the result candle.
-            result_index = newer[0]
+            result_index, result_start = candidates[0]
 
-            # It is only considered completed when another candle
-            # has appeared after it.
-            if result_index + 1 >= len(candles):
+            if now_utc < result_start + interval_duration(interval):
                 continue
 
             result_candle = candles[result_index]
-            entry_price = float(item["price"])
-            result_price = float(result_candle["close"])
+            try:
+                entry_price = float(item["price"])
+                result_price = float(result_candle["close"])
+            except (TypeError, ValueError):
+                continue
 
             if item["signal"] == "CALL":
-                if result_price > entry_price:
-                    outcome = "WIN"
-                elif result_price < entry_price:
-                    outcome = "LOSS"
-                else:
-                    outcome = "DRAW"
+                outcome = "WIN" if result_price > entry_price else "LOSS" if result_price < entry_price else "DRAW"
             else:
-                if result_price < entry_price:
-                    outcome = "WIN"
-                elif result_price > entry_price:
-                    outcome = "LOSS"
-                else:
-                    outcome = "DRAW"
+                outcome = "WIN" if result_price < entry_price else "LOSS" if result_price > entry_price else "DRAW"
 
             item["status"] = outcome
-            item["result_recorded"] = True
             item["result_price"] = result_price
-            item["result_candle_time"] = result_candle["datetime"]
-            item["checked_at"] = datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-
-            if outcome == "WIN":
-                st.session_state.wins += 1
-            elif outcome == "LOSS":
-                st.session_state.losses += 1
-
+            item["result_candle_time"] = result_candle.get("datetime", "")
+            item["checked_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             changed = True
 
+    completed = [
+        item for item in st.session_state.history
+        if item.get("status") in ("WIN", "LOSS")
+    ]
+    st.session_state.wins = sum(1 for item in completed if item.get("status") == "WIN")
+    st.session_state.losses = sum(1 for item in completed if item.get("status") == "LOSS")
     return changed
 
 
-# Automatic result checking using Streamlit's built-in fragment.
-# No extra package is required.
-try:
-    fragment = st.fragment
-except AttributeError:
-    fragment = None
+def render_trade_page():
+    update_pending_results()
 
+    st.markdown('<div class="xiga-card">', unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
 
-def run_tracker():
-    if update_pending_results():
-        try:
-            st.rerun(scope="app")
-        except TypeError:
+    with col1:
+        category = st.selectbox("Asset", list(ASSETS.keys()), key="category")
+
+    asset_names = list(ASSETS[category].keys())
+
+    with col2:
+        display_asset = st.selectbox("Market", asset_names, key="asset")
+
+    timeframe = st.selectbox("Timeframe", list(TIMEFRAMES.keys()), index=0, key="timeframe")
+
+    market_status = "OTC DATA FEED REQUIRED" if category == "OTC" else "LIVE MARKET READY"
+    st.markdown(f'<div class="xiga-market-status">● {market_status}</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    result = st.session_state.result
+    signal = result.get("signal", "READY")
+
+    if signal == "CALL":
+        circle_class, arrow, title, direction, title_class = "call", "↗", "BUY (CALL)", "UPWARD SIGNAL", "call-text"
+    elif signal == "PUT":
+        circle_class, arrow, title, direction, title_class = "put", "↘", "SELL (PUT)", "DOWNWARD SIGNAL", "put-text"
+    elif signal == "NO TRADE":
+        circle_class, arrow, title, direction, title_class = "neutral", "—", "NO TRADE", "WAIT FOR STRONGER CONFIRMATION", "neutral-text"
+    else:
+        circle_class, arrow, title, direction, title_class = "neutral", "◇", "AI READY", "WAITING FOR ANALYSIS", "neutral-text"
+
+    clean_asset = display_asset
+    for flag in ["🇺🇸","🇪🇺","🇬🇧","🇯🇵","🇦🇺","🇨🇦","🇨🇭","🇳🇿","🇩🇪"]:
+        clean_asset = clean_asset.replace(flag, "")
+    clean_asset = clean_asset.strip()
+
+    strength = int(result.get("strength", 0))
+    filled = "● " * strength
+    empty = "● " * (5 - strength)
+    strength_html = (
+        f'<span style="color:#29f5a6">{filled}</span>'
+        f'<span style="color:#26394c">{empty}</span>'
+        if strength else '<span style="color:#26394c">● ● ● ● ●</span>'
+    )
+
+    total_results = st.session_state.wins + st.session_state.losses
+    if total_results:
+        win_display = f"{round(st.session_state.wins / total_results * 100, 1)}%"
+        win_status = f"● {st.session_state.wins} WINS • {st.session_state.losses} LOSSES"
+    else:
+        pending_count = sum(1 for item in st.session_state.history if item.get("status") == "PENDING")
+        win_display = "—"
+        win_status = f"● {pending_count} SIGNAL TRACKING" if pending_count else "● WAITING FOR RESULTS"
+
+    ai_title = "AI ANALYSIS COMPLETE" if result.get("success") else "AI ENGINE READY"
+
+    st.markdown(
+        f'''
+<div class="xiga-card xiga-signal">
+<div class="xiga-signal-label">SIGNAL FOR</div>
+<div class="xiga-asset">{clean_asset}</div>
+<div class="xiga-time">● TIMEFRAME: {timeframe}</div>
+<div class="xiga-circle {circle_class}"><div class="xiga-arrow">{arrow}</div></div>
+<div class="xiga-signal-title {title_class}">{title}</div>
+<div class="xiga-direction">{direction}</div>
+<br>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+<div class="xiga-stat">
+<div class="xiga-stat-label">SIGNAL STRENGTH</div>
+<div class="xiga-strength">{strength_html}</div>
+<div class="xiga-number">{strength}/5</div>
+</div>
+<div class="xiga-stat">
+<div class="xiga-stat-label">WIN RATE</div>
+<div class="xiga-win">{win_display}</div>
+<div style="color:#29f5a6;font-size:8px;margin-top:3px;">{win_status}</div>
+</div>
+</div>
+<div class="xiga-ai">
+<div class="xiga-ai-icon">✓</div>
+<div>
+<div class="xiga-ai-title">{ai_title}</div>
+<div class="xiga-ai-desc">{result.get("description","Select an asset and start analysis.")}</div>
+</div>
+</div>
+</div>
+''',
+        unsafe_allow_html=True,
+    )
+
+    analyze_clicked = st.button("⚡ ANALYZE MARKET", key="analyze_button", use_container_width=True)
+
+    if analyze_clicked:
+        if category == "OTC":
+            st.session_state.result = {
+                "success": False,
+                "signal": "NO TRADE",
+                "strength": 0,
+                "description": "Pocket Option OTC prices use a separate feed. XIGA will not invent an OTC signal.",
+                "status": "OTC DATA FEED REQUIRED",
+            }
             st.rerun()
 
+        symbol = ASSETS[category][display_asset]
+        with st.spinner("Connecting to live market data..."):
+            analysis = analyze_market(symbol, timeframe)
 
-if fragment:
-    @st.fragment(run_every="15s")
-    def auto_tracker():
-        run_tracker()
+        if analysis.get("success") and analysis.get("signal") in ("CALL", "PUT"):
+            st.session_state.signals += 1
+            st.session_state.history.insert(
+                0,
+                {
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "asset": clean_asset,
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "signal": analysis["signal"],
+                    "strength": analysis["strength"],
+                    "price": analysis.get("price", "—"),
+                    "entry_candle_time": analysis.get("entry_candle_time", ""),
+                    "status": "PENDING",
+                },
+            )
+            st.session_state.history = st.session_state.history[:100]
 
-    auto_tracker()
-else:
-    run_tracker()
+        st.session_state.result = analysis
+        st.rerun()
+
+    st.markdown(
+        '<div class="xiga-footer">🔒 SECURE • XIGA AI • V5.1 • LIVE ANALYSIS</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------- CSS: ORIGINAL DESIGN ----------------
@@ -387,44 +469,19 @@ selected_page=st.radio("Navigation",nav_options,index=nav_options.index(st.sessi
 st.session_state.page=selected_page
 
 # ---------------- TRADE ----------------
-if selected_page=="Trade":
-    st.markdown('<div class="xiga-card">',unsafe_allow_html=True)
-    col1,col2=st.columns(2)
-    with col1: category=st.selectbox("Asset",list(ASSETS.keys()),key="category")
-    asset_names=list(ASSETS[category].keys())
-    with col2: display_asset=st.selectbox("Market",asset_names,key="asset")
-    timeframe=st.selectbox("Timeframe",list(TIMEFRAMES.keys()),index=0,key="timeframe")
-    market_status="OTC DATA FEED REQUIRED" if category=="OTC" else "LIVE MARKET READY"
-    st.markdown(f'<div class="xiga-market-status">● {market_status}</div>',unsafe_allow_html=True)
-    st.markdown('</div>',unsafe_allow_html=True)
+if selected_page == "Trade":
+    try:
+        _fragment = st.fragment
+    except AttributeError:
+        _fragment = None
 
-    result=st.session_state.result; signal=result.get("signal","READY")
-    if signal=="CALL": circle_class="call";arrow="↗";title="BUY (CALL)";direction="UPWARD SIGNAL";title_class="call-text"
-    elif signal=="PUT": circle_class="put";arrow="↘";title="SELL (PUT)";direction="DOWNWARD SIGNAL";title_class="put-text"
-    elif signal=="NO TRADE": circle_class="neutral";arrow="—";title="NO TRADE";direction="WAIT FOR STRONGER CONFIRMATION";title_class="neutral-text"
-    else: circle_class="neutral";arrow="◇";title="AI READY";direction="WAITING FOR ANALYSIS";title_class="neutral-text"
-    clean_asset=display_asset
-    for flag in ["🇺🇸","🇪🇺","🇬🇧","🇯🇵","🇦🇺","🇨🇦","🇨🇭","🇳🇿","🇩🇪"]: clean_asset=clean_asset.replace(flag,"")
-    clean_asset=clean_asset.strip(); strength=int(result.get("strength",0)); filled="● "*strength; empty="● "*(5-strength)
-    strength_html=(f'<span style="color:#29f5a6">{filled}</span><span style="color:#26394c">{empty}</span>' if strength else '<span style="color:#26394c">● ● ● ● ●</span>')
-    total=st.session_state.wins+st.session_state.losses
-    if total: win_display=f'{round(st.session_state.wins/total*100,1)}%'; win_status=f'● {st.session_state.wins} WINS • {st.session_state.losses} LOSSES'
-    else: win_display="—";win_status="● WAITING FOR RESULTS"
-    ai_title="AI ANALYSIS COMPLETE" if result.get("success") else "AI ENGINE READY"
-    st.markdown(f'''<div class="xiga-card xiga-signal"><div class="xiga-signal-label">SIGNAL FOR</div><div class="xiga-asset">{clean_asset}</div><div class="xiga-time">● TIMEFRAME: {timeframe}</div><div class="xiga-circle {circle_class}"><div class="xiga-arrow">{arrow}</div></div><div class="xiga-signal-title {title_class}">{title}</div><div class="xiga-direction">{direction}</div><br><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div class="xiga-stat"><div class="xiga-stat-label">SIGNAL STRENGTH</div><div class="xiga-strength">{strength_html}</div><div class="xiga-number">{strength}/5</div></div><div class="xiga-stat"><div class="xiga-stat-label">WIN RATE</div><div class="xiga-win">{win_display}</div><div style="color:#29f5a6;font-size:8px;margin-top:3px;">{win_status}</div></div></div><div class="xiga-ai"><div class="xiga-ai-icon">✓</div><div><div class="xiga-ai-title">{ai_title}</div><div class="xiga-ai-desc">{result.get("description","Select an asset and start analysis.")}</div></div></div></div>''',unsafe_allow_html=True)
-
-    analyze_clicked=st.button("⚡ ANALYZE MARKET",key="analyze_button",use_container_width=True)
-    if analyze_clicked:
-        if category=="OTC":
-            st.session_state.result={"success":False,"signal":"NO TRADE","strength":0,"description":"Pocket Option OTC prices use a separate feed. XIGA will not invent an OTC signal.","status":"OTC DATA FEED REQUIRED"};st.rerun()
-        symbol=ASSETS[category][display_asset]
-        with st.spinner("Connecting to live market data..."): analysis=analyze_market(symbol,timeframe)
-        if analysis.get("success") and analysis.get("signal") in ("CALL","PUT"):
-            st.session_state.signals+=1
-            st.session_state.history.insert(0,{"time":datetime.now().strftime("%Y-%m-%d %H:%M:%S"),"asset":clean_asset,"symbol":symbol,"timeframe":timeframe,"signal":analysis["signal"],"strength":analysis["strength"],"price":analysis.get("price","—"),"entry_candle_time":analysis.get("entry_candle_time",""),"status":"PENDING"})
-            st.session_state.history=st.session_state.history[:100]
-        st.session_state.result=analysis;st.rerun()
-    st.markdown('<div class="xiga-footer">🔒 SECURE • XIGA AI • V5.1 • LIVE ANALYSIS</div>',unsafe_allow_html=True)
+    if _fragment:
+        @_fragment(run_every="15s")
+        def trade_live():
+            render_trade_page()
+        trade_live()
+    else:
+        render_trade_page()
 
 # ---------------- HISTORY ----------------
 elif selected_page=="History":
