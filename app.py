@@ -308,12 +308,18 @@ def calculate_outcome(signal, entry_price, result_price):
 
 def update_pending_results():
     """
-    Resolve each pending signal using the FIRST candle returned by Twelve Data
-    whose timestamp is strictly after the entry candle.
+    Resolve pending CALL/PUT signals with minimal Twelve Data requests.
 
-    We deliberately do NOT use the server clock to decide whether a candle is
-    closed. Twelve Data's candle sequence is the source of truth. This avoids
-    timezone/server-clock problems that can leave a signal stuck at PENDING.
+    Credit-saving design:
+    - The Streamlit fragment still refreshes the UI every 15 seconds.
+    - We DO NOT call Twelve Data every 15 seconds.
+    - For each signal, we wait locally until the entry candle's next
+      candle should be complete (about 1 minute for 1 MIN, 5 minutes for
+      5 MIN), then make the API request.
+    - If Twelve Data has not published a completed result candle yet, we
+      retry on a later UI refresh.
+    - Signals using the same symbol/timeframe share one API response per
+      refresh, so duplicate pending signals do not create duplicate calls.
     """
     st.session_state.wins = sum(
         1 for item in st.session_state.history
@@ -333,17 +339,49 @@ def update_pending_results():
         and item.get("entry_candle_time")
     ]
 
+    # Cache one Twelve Data response per symbol/timeframe during this refresh.
+    # This is especially useful if the user has more than one pending signal.
+    candle_cache = {}
+
     for item in pending:
         interval = TIMEFRAMES[item["timeframe"]]
+        entry_time = parse_candle_time(item["entry_candle_time"])
 
-        # IMPORTANT: get_candles() requires at least 60 candles.
-        # The old tracker requested only 20, so every tracker request was
-        # rejected as "not enough data" and could never produce a result.
-        candles, api_status = get_candles(
-            item["symbol"],
-            interval,
-            outputsize=70,
-        )
+        if entry_time is None:
+            item["tracker_state"] = "INVALID ENTRY"
+            item["tracking_error"] = "INVALID ENTRY CANDLE TIME"
+            continue
+
+        if entry_time.tzinfo is None:
+            try:
+                entry_time = entry_time.replace(tzinfo=ZoneInfo("UTC"))
+            except Exception:
+                entry_time = entry_time.replace(tzinfo=timezone.utc)
+
+        duration = timedelta(minutes=1 if interval == "1min" else 5)
+        expected_result_time = entry_time + duration
+        now = datetime.now(entry_time.tzinfo)
+
+        item["next_check_at"] = expected_result_time.isoformat()
+
+        # IMPORTANT: no API request before the result candle should be closed.
+        # The UI can refresh every 15 seconds without consuming credits.
+        if now < expected_result_time:
+            remaining = max(0, int((expected_result_time - now).total_seconds()))
+            item["tracker_state"] = "WAITING FOR RESULT CANDLE"
+            item["tracking_error"] = f"Result check in about {remaining}s"
+            continue
+
+        cache_key = (item["symbol"], interval)
+
+        if cache_key not in candle_cache:
+            candle_cache[cache_key] = get_candles(
+                item["symbol"],
+                interval,
+                outputsize=70,
+            )
+
+        candles, api_status = candle_cache[cache_key]
 
         item["tracker_last_check"] = datetime.now(
             ZoneInfo("Asia/Karachi")
@@ -354,20 +392,10 @@ def update_pending_results():
             item["tracking_error"] = api_status
             continue
 
-        entry_time = parse_candle_time(item["entry_candle_time"])
-
-        if entry_time is None:
-            item["tracker_state"] = "INVALID ENTRY"
-            item["tracking_error"] = "INVALID ENTRY CANDLE TIME"
-            continue
-
-        # Twelve Data normally returns newest -> oldest. get_candles()
-        # reverses it, so this is oldest -> newest.
+        # get_candles() returns oldest -> newest.
         newer = []
-
         for candle in candles:
             candle_time = parse_candle_time(candle.get("datetime"))
-
             if candle_time is not None and candle_time > entry_time:
                 newer.append((candle_time, candle))
 
@@ -379,11 +407,19 @@ def update_pending_results():
             )
             continue
 
-        # IMPORTANT:
-        # The first newer candle is the result candle.
-        # This is exactly one 1-minute candle for 1 MIN or one 5-minute
-        # candle for 5 MIN. We do not wait for a second newer candle.
+        # We only use the FIRST newer candle, which is exactly the next
+        # 1-minute candle for 1 MIN or next 5-minute candle for 5 MIN.
         result_time, result_candle = newer[0]
+
+        # Twelve Data may expose a currently-forming candle. Never settle
+        # the result until the full result candle interval has elapsed.
+        if not candle_is_completed(result_candle, interval):
+            item["tracker_state"] = "WAITING FOR CANDLE CLOSE"
+            item["tracking_error"] = (
+                f"Result candle {result_candle.get('datetime', '—')} "
+                "is not closed yet."
+            )
+            continue
 
         result_price = float(result_candle["close"])
 
@@ -394,8 +430,6 @@ def update_pending_results():
         )
 
         if outcome == "DRAW":
-            # A tie is not counted as a win or loss. Keep it visible in
-            # history instead of fabricating a result.
             item["status"] = "DRAW"
         elif outcome in ("WIN", "LOSS"):
             item["status"] = outcome
