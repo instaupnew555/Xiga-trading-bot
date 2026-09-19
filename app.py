@@ -254,6 +254,16 @@ def parse_candle_time(value):
     return None
 
 
+def normalize_candle_datetime(value, default_tz=timezone.utc):
+    """Parse a candle datetime and always return a timezone-aware datetime."""
+    dt = parse_candle_time(value)
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=default_tz)
+    return dt
+
+
 def candle_is_completed(candle, interval):
     """Return True when the candle's full interval has elapsed.
 
@@ -395,7 +405,7 @@ def update_pending_results():
         # get_candles() returns oldest -> newest.
         newer = []
         for candle in candles:
-            candle_time = parse_candle_time(candle.get("datetime"))
+            candle_time = normalize_candle_datetime(candle.get("datetime"), entry_time.tzinfo)
             if candle_time is not None and candle_time > entry_time:
                 newer.append((candle_time, candle))
 
