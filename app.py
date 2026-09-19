@@ -307,8 +307,14 @@ def calculate_outcome(signal, entry_price, result_price):
 
 
 def update_pending_results():
-    changed = False
+    """
+    Resolve each pending signal using the FIRST candle returned by Twelve Data
+    whose timestamp is strictly after the entry candle.
 
+    We deliberately do NOT use the server clock to decide whether a candle is
+    closed. Twelve Data's candle sequence is the source of truth. This avoids
+    timezone/server-clock problems that can leave a signal stuck at PENDING.
+    """
     st.session_state.wins = sum(
         1 for item in st.session_state.history
         if item.get("status") == "WIN"
@@ -329,55 +335,77 @@ def update_pending_results():
 
     for item in pending:
         interval = TIMEFRAMES[item["timeframe"]]
+
         candles, api_status = get_candles(
             item["symbol"],
             interval,
             outputsize=20,
         )
 
+        item["tracker_last_check"] = datetime.now(
+            ZoneInfo("Asia/Karachi")
+        ).strftime("%H:%M:%S PKT")
+
         if not candles:
+            item["tracker_state"] = "API ERROR"
             item["tracking_error"] = api_status
             continue
 
         entry_time = parse_candle_time(item["entry_candle_time"])
+
         if entry_time is None:
+            item["tracker_state"] = "INVALID ENTRY"
             item["tracking_error"] = "INVALID ENTRY CANDLE TIME"
             continue
 
-        # IMPORTANT: the FIRST completed candle after the entry candle
-        # is the result candle. No second-candle delay is used.
-        closed = completed_candles(candles, interval)
+        # Twelve Data normally returns newest -> oldest. get_candles()
+        # reverses it, so this is oldest -> newest.
         newer = []
-        for candle in closed:
+
+        for candle in candles:
             candle_time = parse_candle_time(candle.get("datetime"))
+
             if candle_time is not None and candle_time > entry_time:
                 newer.append((candle_time, candle))
 
         if not newer:
-            item["tracking_error"] = "WAITING FOR NEXT COMPLETED CANDLE"
+            item["tracker_state"] = "WAITING FOR NEXT CANDLE"
+            item["tracking_error"] = (
+                f"Entry candle: {item['entry_candle_time']} | "
+                f"Latest returned: {candles[-1].get('datetime', '—')}"
+            )
             continue
 
+        # IMPORTANT:
+        # The first newer candle is the result candle.
+        # This is exactly one 1-minute candle for 1 MIN or one 5-minute
+        # candle for 5 MIN. We do not wait for a second newer candle.
         result_time, result_candle = newer[0]
+
+        result_price = float(result_candle["close"])
 
         outcome = calculate_outcome(
             item["signal"],
             item["price"],
-            result_candle["close"],
+            result_price,
         )
 
-        if outcome is None:
-            continue
+        if outcome == "DRAW":
+            # A tie is not counted as a win or loss. Keep it visible in
+            # history instead of fabricating a result.
+            item["status"] = "DRAW"
+        elif outcome in ("WIN", "LOSS"):
+            item["status"] = outcome
 
-        item["status"] = outcome
-        item["result_price"] = float(result_candle["close"])
+        item["result_price"] = result_price
         item["result_candle_time"] = result_candle["datetime"]
-        item["checked_at"] = datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        item["tracker_state"] = f"RESULT {outcome}"
         item["tracking_error"] = ""
+        item["checked_at"] = datetime.now(
+            ZoneInfo("Asia/Karachi")
+        ).strftime("%Y-%m-%d %H:%M:%S PKT")
 
-        changed = True
-
+    # Recalculate ONLY from completed WIN/LOSS records.
     st.session_state.wins = sum(
         1 for item in st.session_state.history
         if item.get("status") == "WIN"
@@ -386,8 +414,6 @@ def update_pending_results():
         1 for item in st.session_state.history
         if item.get("status") == "LOSS"
     )
-
-    return changed
 
 
 # ---------------- CSS: ORIGINAL DESIGN ----------------
@@ -543,6 +569,24 @@ if selected_page=="Trade":
             else "AI ENGINE READY"
         )
 
+        # Diagnostic tracker status: only shown when a signal is pending.
+        # This tells us exactly what the tracker is doing instead of leaving
+        # the user with a permanent "SIGNAL TRACKING" message.
+        pending_items = [
+            item for item in st.session_state.history
+            if item.get("status") == "PENDING"
+        ]
+
+        tracker_line = ""
+        if pending_items:
+            p = pending_items[0]
+            tracker_line = (
+                f'<div style="color:#6f8499;font-size:7px;margin-top:6px;">'
+                f'TRACKER: {p.get("tracker_state","STARTING")} • '
+                f'{p.get("tracker_last_check","—")}'
+                f'</div>'
+            )
+
         st.markdown(
             f"""
 <div class="xiga-card xiga-signal">
@@ -589,6 +633,7 @@ if selected_page=="Trade":
     "description",
     "Select an asset and start analysis."
 )}</div>
+{tracker_line}
 </div>
 </div>
 
@@ -632,6 +677,9 @@ if selected_page=="Trade":
                             "entry_candle_time", ""
                         ),
                         "status": "PENDING",
+                        "tracker_state": "SIGNAL CREATED",
+                        "tracker_last_check": "",
+                        "tracking_error": "",
                     }
                 )
 
