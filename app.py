@@ -336,10 +336,13 @@ def update_pending_results():
     for item in pending:
         interval = TIMEFRAMES[item["timeframe"]]
 
+        # IMPORTANT: get_candles() requires at least 60 candles.
+        # The old tracker requested only 20, so every tracker request was
+        # rejected as "not enough data" and could never produce a result.
         candles, api_status = get_candles(
             item["symbol"],
             interval,
-            outputsize=20,
+            outputsize=70,
         )
 
         item["tracker_last_check"] = datetime.now(
@@ -693,7 +696,7 @@ if selected_page=="Trade":
         st.markdown(
             """
 <div class="xiga-footer">
-🔒 SECURE • XIGA AI • V5.2 • LIVE ANALYSIS
+🔒 SECURE • XIGA AI • V5.3 • LIVE ANALYSIS
 </div>
 """,
             unsafe_allow_html=True
