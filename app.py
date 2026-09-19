@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+from streamlit_autorefresh import st_autorefresh
 from datetime import datetime
 
 st.set_page_config(page_title="XIGA Trading", page_icon="📈", layout="centered", initial_sidebar_state="collapsed")
@@ -76,52 +77,146 @@ def macd(values):
     pf,ps=ema(prev,12),ema(prev,26)
     return cur,(pf-ps if pf is not None and ps is not None else None)
 
-def analyze_market(symbol,timeframe):
-    interval=TIMEFRAMES.get(timeframe)
-    candles,status=get_candles(symbol,interval)
-    if not candles:
-        return {"success":False,"signal":"NO TRADE","strength":0,"description":status,"status":status}
-    closes=[c["close"] for c in candles]; current=closes[-1]
-    e9,e21,e50=ema(closes,9),ema(closes,21),ema(closes,50); rv=rsi(closes); mv,pm=macd(closes)
-    score=0; reasons=[]
-    if e9 is not None and e21 is not None:
-        if e9>e21: score+=1; reasons.append("EMA 9 is above EMA 21")
-        elif e9<e21: score-=1; reasons.append("EMA 9 is below EMA 21")
-    if e21 is not None and e50 is not None:
-        if e21>e50: score+=1; reasons.append("Medium-term trend is bullish")
-        elif e21<e50: score-=1; reasons.append("Medium-term trend is bearish")
-    if e21 is not None:
-        if current>e21: score+=1; reasons.append("Price is above EMA 21")
-        elif current<e21: score-=1; reasons.append("Price is below EMA 21")
-    if rv is not None:
-        if rv>=55: score+=1; reasons.append(f"RSI bullish ({rv:.1f})")
-        elif rv<=45: score-=1; reasons.append(f"RSI bearish ({rv:.1f})")
-        else: reasons.append(f"RSI neutral ({rv:.1f})")
-    if mv is not None:
-        if mv>0: score+=1; reasons.append("MACD is positive")
-        elif mv<0: score-=1; reasons.append("MACD is negative")
-        if pm is not None:
-            if mv>pm: reasons.append("MACD momentum is rising")
-            elif mv<pm: reasons.append("MACD momentum is falling")
-    if len(closes)>=6:
-        mom=closes[-1]-closes[-6]
-        if mom>0: score+=1; reasons.append("Recent momentum is bullish")
-        elif mom<0: score-=1; reasons.append("Recent momentum is bearish")
-    strength=min(5,max(1,abs(score)))
-    if score>=4:
-        signal="CALL"; desc=f"Bullish confirmation. Score {score:+d}. This is an analysis signal, not a guarantee."
-    elif score<=-4:
-        signal="PUT"; desc=f"Bearish confirmation. Score {score:+d}. This is an analysis signal, not a guarantee."
+def analyze_market(symbol, timeframe):
+    interval = TIMEFRAMES.get(timeframe)
+
+    if interval is None:
+        return {
+            "success": False,
+            "signal": "NO TRADE",
+            "strength": 0,
+            "description": "Use 1 MIN or 5 MIN.",
+            "status": "TIMEFRAME UNAVAILABLE",
+        }
+
+    candles, status = get_candles(symbol, interval)
+
+    if len(candles) < 61:
+        return {
+            "success": False,
+            "signal": "NO TRADE",
+            "strength": 0,
+            "description": status,
+            "status": status,
+        }
+
+    # Twelve Data normally includes the currently-forming candle.
+    # Use the previous candle as the latest completed candle.
+    analysis_candles = candles[:-1]
+
+    closes = [c["close"] for c in analysis_candles]
+    current = closes[-1]
+
+    ema9 = ema(closes, 9)
+    ema21 = ema(closes, 21)
+    ema50 = ema(closes, 50)
+    rsi_value = rsi(closes, 14)
+    macd_value, previous_macd = macd(closes)
+
+    score = 0
+    reasons = []
+
+    if ema9 is not None and ema21 is not None:
+        if ema9 > ema21:
+            score += 1
+            reasons.append("EMA 9 is above EMA 21")
+        elif ema9 < ema21:
+            score -= 1
+            reasons.append("EMA 9 is below EMA 21")
+
+    if ema21 is not None and ema50 is not None:
+        if ema21 > ema50:
+            score += 1
+            reasons.append("Medium-term trend is bullish")
+        elif ema21 < ema50:
+            score -= 1
+            reasons.append("Medium-term trend is bearish")
+
+    if ema21 is not None:
+        if current > ema21:
+            score += 1
+            reasons.append("Price is above EMA 21")
+        elif current < ema21:
+            score -= 1
+            reasons.append("Price is below EMA 21")
+
+    if rsi_value is not None:
+        if rsi_value >= 55:
+            score += 1
+            reasons.append(f"RSI bullish ({rsi_value:.1f})")
+        elif rsi_value <= 45:
+            score -= 1
+            reasons.append(f"RSI bearish ({rsi_value:.1f})")
+        else:
+            reasons.append(f"RSI neutral ({rsi_value:.1f})")
+
+    if macd_value is not None:
+        if macd_value > 0:
+            score += 1
+            reasons.append("MACD is positive")
+        elif macd_value < 0:
+            score -= 1
+            reasons.append("MACD is negative")
+
+        if previous_macd is not None:
+            if macd_value > previous_macd:
+                reasons.append("MACD momentum is rising")
+            elif macd_value < previous_macd:
+                reasons.append("MACD momentum is falling")
+
+    if len(closes) >= 6:
+        momentum = closes[-1] - closes[-6]
+
+        if momentum > 0:
+            score += 1
+            reasons.append("Recent momentum is bullish")
+        elif momentum < 0:
+            score -= 1
+            reasons.append("Recent momentum is bearish")
+
+    strength = min(5, max(1, abs(score)))
+
+    if score >= 4:
+        signal = "CALL"
+        description = (
+            f"Bullish confirmation. Score {score:+d}. "
+            "This is an analysis signal, not a guarantee."
+        )
+    elif score <= -4:
+        signal = "PUT"
+        description = (
+            f"Bearish confirmation. Score {score:+d}. "
+            "This is an analysis signal, not a guarantee."
+        )
     else:
-        signal="NO TRADE"; desc=f"Mixed conditions. Score {score:+d}. Waiting for stronger confirmation."
-    return {"success":True,"signal":signal,"strength":strength,"score":score,"price":current,"entry_candle_time":candles[-1]["datetime"],"rsi":rv,"macd":mv,"description":desc,"status":status,"reasons":reasons}
+        signal = "NO TRADE"
+        description = (
+            f"Mixed conditions. Score {score:+d}. "
+            "Waiting for stronger confirmation."
+        )
+
+    return {
+        "success": True,
+        "signal": signal,
+        "strength": strength,
+        "score": score,
+        "price": current,
+        "entry_candle_time": analysis_candles[-1]["datetime"],
+        "rsi": rsi_value,
+        "macd": macd_value,
+        "description": description,
+        "status": status,
+        "reasons": reasons,
+    }
+
 
 # ---------------- AUTOMATIC RESULT TRACKING ----------------
-def candle_time_value(value):
-    """Convert a Twelve Data candle timestamp to a comparable datetime."""
+def parse_candle_time(value):
     if not value:
         return None
+
     text = str(value).strip().replace("Z", "+00:00")
+
     try:
         return datetime.fromisoformat(text)
     except ValueError:
@@ -130,6 +225,7 @@ def candle_time_value(value):
                 return datetime.strptime(str(value).strip(), fmt)
             except ValueError:
                 pass
+
     return None
 
 
@@ -137,16 +233,24 @@ def update_pending_results():
     changed = False
 
     pending = [
-        x for x in st.session_state.history
-        if x.get("status") == "PENDING"
-        and x.get("signal") in ("CALL", "PUT")
-        and x.get("symbol")
-        and x.get("timeframe") in TIMEFRAMES
+        item for item in st.session_state.history
+        if item.get("status") == "PENDING"
+        and item.get("signal") in ("CALL", "PUT")
+        and item.get("symbol")
+        and item.get("timeframe") in TIMEFRAMES
+        and item.get("entry_candle_time")
     ]
 
+    if not pending:
+        return False
+
     groups = {}
+
     for item in pending:
-        key = (item["symbol"], TIMEFRAMES[item["timeframe"]])
+        key = (
+            item["symbol"],
+            TIMEFRAMES[item["timeframe"]],
+        )
         groups.setdefault(key, []).append(item)
 
     for (symbol, interval), items in groups.items():
@@ -154,47 +258,49 @@ def update_pending_results():
         candles, _ = get_candles(
             symbol,
             interval,
-            outputsize=10
+            outputsize=10,
         )
 
         if len(candles) < 3:
             continue
 
-        candle_times = [
-            candle_time_value(c.get("datetime"))
-            for c in candles
+        parsed_times = [
+            parse_candle_time(candle.get("datetime"))
+            for candle in candles
         ]
 
         for item in items:
 
-            entry_time = candle_time_value(
-                item.get("entry_candle_time")
+            entry_time = parse_candle_time(
+                item["entry_candle_time"]
             )
 
             if entry_time is None:
                 continue
 
-            # Find the first candle strictly after the signal candle.
-            # We then require ONE candle after that result candle as
-            # proof that the result candle has finished.
-            newer_indexes = [
-                i for i, candle_time in enumerate(candle_times)
-                if candle_time is not None and candle_time > entry_time
+            # Find candles strictly newer than the completed
+            # candle used to generate the signal.
+            newer = [
+                index
+                for index, candle_time in enumerate(parsed_times)
+                if candle_time is not None
+                and candle_time > entry_time
             ]
 
-            if not newer_indexes:
+            if not newer:
                 continue
 
-            result_index = newer_indexes[0]
+            # The first newer candle is the result candle.
+            result_index = newer[0]
 
-            # The result candle must itself be completed.
-            # If another candle has started after it, its close is final.
+            # It is only considered completed when another candle
+            # has appeared after it.
             if result_index + 1 >= len(candles):
                 continue
 
             result_candle = candles[result_index]
-            result_price = result_candle["close"]
             entry_price = float(item["price"])
+            result_price = float(result_candle["close"])
 
             if item["signal"] == "CALL":
                 if result_price > entry_price:
@@ -212,6 +318,7 @@ def update_pending_results():
                     outcome = "DRAW"
 
             item["status"] = outcome
+            item["result_recorded"] = True
             item["result_price"] = result_price
             item["result_candle_time"] = result_candle["datetime"]
             item["checked_at"] = datetime.now().strftime(
@@ -228,22 +335,18 @@ def update_pending_results():
     return changed
 
 
-try:
-    fragment = st.fragment
-except AttributeError:
-    fragment = None
+# Robust full-page polling.
+# Unlike a fragment, this reruns the entire app every 15 seconds,
+# so the visible WIN/LOSS and win-rate widgets always recalculate.
+st_autorefresh(
+    interval=15_000,
+    limit=None,
+    key="xiga_market_result_refresh",
+)
 
-
-def tracker():
-    changed = update_pending_results()
-
-    if changed:
-        # Force the complete Streamlit app to rerun so the
-        # WIN/LOSS and historical win rate are immediately visible.
-        try:
-            st.rerun(scope="app")
-        except TypeError:
-            st.rerun()
+# Check pending results before rendering the visible UI.
+if update_pending_results():
+    st.rerun()
 
 
 # ---------------- CSS: ORIGINAL DESIGN ----------------
@@ -264,13 +367,6 @@ div[role="radiogroup"]{display:flex !important;justify-content:center !important
 </style>
 """,unsafe_allow_html=True)
 
-# tracker runs every 15 seconds without changing the page design
-if fragment: 
-    @st.fragment(run_every="15s")
-    def auto_tracker(): tracker()
-    auto_tracker()
-else:
-    tracker()
 
 # ---------------- TOP BAR ----------------
 st.markdown('''<div class="xiga-top"><div class="xiga-menu">☰</div><div class="xiga-brand"><div class="xiga-title"><span>▰</span> XIGA</div><div class="xiga-subtitle">TRADING SIGNAL BOT</div></div><div class="xiga-pro">👑 PRO</div></div>''',unsafe_allow_html=True)
