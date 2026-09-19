@@ -22,7 +22,6 @@ ASSETS = {
     "Crypto": {"₿ Bitcoin":"BTC/USD","Ξ Ethereum":"ETH/USD","◎ Solana":"SOL/USD","🐕 Dogecoin":"DOGE/USD","🔷 Cardano":"ADA/USD","🟡 BNB":"BNB/USD","🔗 Chainlink":"LINK/USD","⚡ Litecoin":"LTC/USD","🔵 XRP":"XRP/USD"},
     "Commodities": {"🥇 Gold":"XAU/USD","🥈 Silver":"XAG/USD","🛢 WTI Crude Oil":"WTI/USD","🛢 Brent Oil":"BRENT/USD","🔥 Natural Gas":"NATGAS/USD"},
     "Indices": {"📊 S&P 500":"SPX","💻 NASDAQ 100":"NDX","🏦 Dow Jones":"DJI","🇩🇪 DAX":"DAX","🇬🇧 FTSE 100":"FTSE","🇯🇵 Nikkei 225":"N225"},
-    "OTC": {"OTC EUR/USD":None,"OTC GBP/USD":None,"OTC USD/JPY":None,"OTC Gold":None,"OTC Silver":None,"OTC Apple":None,"OTC Microsoft":None,"OTC Tesla":None,"OTC Bitcoin":None,"OTC Ethereum":None},
 }
 TIMEFRAMES = {"1 MIN":"1min", "5 MIN":"5min"}
 
@@ -118,9 +117,20 @@ def analyze_market(symbol, timeframe):
             "status": status,
         }
 
-    # Twelve Data normally includes the currently-forming candle.
-    # Use the previous candle as the latest completed candle.
-    analysis_candles = candles[:-1]
+    # Normalize both possible API behaviours by using only candles that
+    # are definitely complete. This prevents the signal/result clock from
+    # being shifted by an extra candle when Twelve Data returns completed
+    # candles only.
+    analysis_candles = completed_candles(candles, interval)
+
+    if len(analysis_candles) < 60:
+        return {
+            "success": False,
+            "signal": "NO TRADE",
+            "strength": 0,
+            "description": "WAITING FOR ENOUGH COMPLETED CANDLES",
+            "status": status,
+        }
 
     closes = [c["close"] for c in analysis_candles]
     current = closes[-1]
@@ -245,17 +255,19 @@ def parse_candle_time(value):
 
 
 def candle_is_completed(candle, interval):
-    """Return True only when the candle's full interval has elapsed.
+    """Return True when the candle's full interval has elapsed.
 
-    This handles both Twelve Data behaviours: feeds that include the current
-    forming candle and feeds that return completed candles only.
+    This deliberately works for BOTH Twelve Data behaviours:
+    1) the API returns the currently-forming candle; or
+    2) the API returns completed candles only.
+
+    We use this single test everywhere, so we never add an unnecessary extra
+    minute to the result wait time.
     """
     candle_time = parse_candle_time(candle.get("datetime"))
     if candle_time is None:
         return False
 
-    # Twelve Data timestamps are often timezone-naive. Attach the feed
-    # timezone instead of assuming the user's phone timezone.
     if candle_time.tzinfo is None:
         tz_name = candle.get("timezone") or "UTC"
         try:
@@ -263,11 +275,22 @@ def candle_is_completed(candle, interval):
         except Exception:
             candle_time = candle_time.replace(tzinfo=timezone.utc)
 
-    minutes = 1 if interval == "1min" else 5 if interval == "5min" else None
-    if minutes is None:
+    duration = timedelta(
+        minutes=1 if interval == "1min"
+        else 5 if interval == "5min"
+        else 0
+    )
+    if duration.total_seconds() == 0:
         return False
 
-    return datetime.now(candle_time.tzinfo) >= candle_time + timedelta(minutes=minutes)
+    now = datetime.now(candle_time.tzinfo)
+    candle_end = candle_time + duration
+    return now >= candle_end
+
+
+def completed_candles(candles, interval):
+    """Return only candles whose full interval has closed."""
+    return [c for c in candles if candle_is_completed(c, interval)]
 
 
 def calculate_outcome(signal, entry_price, result_price):
@@ -305,9 +328,10 @@ def update_pending_results():
     ]
 
     for item in pending:
+        interval = TIMEFRAMES[item["timeframe"]]
         candles, api_status = get_candles(
             item["symbol"],
-            TIMEFRAMES[item["timeframe"]],
+            interval,
             outputsize=20,
         )
 
@@ -320,29 +344,20 @@ def update_pending_results():
             item["tracking_error"] = "INVALID ENTRY CANDLE TIME"
             continue
 
-        parsed = []
-        for index, candle in enumerate(candles):
+        # IMPORTANT: the FIRST completed candle after the entry candle
+        # is the result candle. No second-candle delay is used.
+        closed = completed_candles(candles, interval)
+        newer = []
+        for candle in closed:
             candle_time = parse_candle_time(candle.get("datetime"))
-            if candle_time is not None:
-                parsed.append((candle_time, index))
+            if candle_time is not None and candle_time > entry_time:
+                newer.append((candle_time, candle))
 
-        newer = [
-            pair for pair in parsed
-            if pair[0] > entry_time
-        ]
-
-        # The FIRST newer candle is the result candle. We do not wait for a
-        # second candle. If that candle is still forming, keep tracking until
-        # its full interval has elapsed.
-        result_time, result_index = newer[0]
-        result_candle = candles[result_index]
-
-        if not candle_is_completed(
-            result_candle,
-            TIMEFRAMES[item["timeframe"]],
-        ):
-            item["tracking_error"] = "WAITING FOR RESULT CANDLE TO CLOSE"
+        if not newer:
+            item["tracking_error"] = "WAITING FOR NEXT COMPLETED CANDLE"
             continue
+
+        result_time, result_candle = newer[0]
 
         outcome = calculate_outcome(
             item["signal"],
@@ -439,14 +454,8 @@ if selected_page=="Trade":
             key="timeframe"
         )
 
-        market_status = (
-            "OTC DATA FEED REQUIRED"
-            if category == "OTC"
-            else "LIVE MARKET READY"
-        )
-
         st.markdown(
-            f'<div class="xiga-market-status">● {market_status}</div>',
+            '<div class="xiga-market-status">● LIVE MARKET READY</div>',
             unsafe_allow_html=True
         )
 
@@ -596,19 +605,6 @@ if selected_page=="Trade":
 
         if analyze_clicked:
 
-            if category == "OTC":
-                st.session_state.result = {
-                    "success": False,
-                    "signal": "NO TRADE",
-                    "strength": 0,
-                    "description": (
-                        "Pocket Option OTC prices use a separate feed. "
-                        "XIGA will not invent an OTC signal."
-                    ),
-                    "status": "OTC DATA FEED REQUIRED"
-                }
-                st.rerun()
-
             symbol = ASSETS[category][display_asset]
 
             with st.spinner("Connecting to live market data..."):
@@ -649,7 +645,7 @@ if selected_page=="Trade":
         st.markdown(
             """
 <div class="xiga-footer">
-🔒 SECURE • XIGA AI • V5.1 • LIVE ANALYSIS
+🔒 SECURE • XIGA AI • V5.2 • LIVE ANALYSIS
 </div>
 """,
             unsafe_allow_html=True
