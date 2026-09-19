@@ -1,350 +1,425 @@
 import streamlit as st
 import random
-from datetime import datetime
-
-# =========================================================
-# XIGA TRADING SIGNAL BOT
-# UI VERSION
-# =========================================================
 
 st.set_page_config(
-    page_title="XIGA Trading Signal",
+    page_title="XIGA Trading Signal Bot",
     page_icon="📈",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
 # =========================================================
-# SESSION STATE
-# =========================================================
-
-if "page" not in st.session_state:
-    st.session_state.page = "Trade"
-
-if "signal" not in st.session_state:
-    st.session_state.signal = None
-
-if "score" not in st.session_state:
-    st.session_state.score = 0
-
-if "signal_time" not in st.session_state:
-    st.session_state.signal_time = None
-
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-
-# =========================================================
-# CSS
+# XIGA MODERN MOBILE UI
 # =========================================================
 
 st.markdown("""
 <style>
 
-* {
-    box-sizing: border-box;
-}
+/* ---------- APP ---------- */
 
 .stApp {
     background:
-        radial-gradient(circle at 50% 0%, #14233d 0%, #07101e 42%, #030711 100%);
+        radial-gradient(circle at 50% -10%, #13243b 0%, #07101d 42%, #030711 100%);
     color: #ffffff;
 }
 
 .block-container {
-    max-width: 520px;
-    padding: 20px 15px 35px;
+    max-width: 460px;
+    padding: 18px 14px 30px;
 }
 
-header {
+header, footer, #MainMenu {
     visibility: hidden;
 }
 
-#MainMenu {
-    visibility: hidden;
+* {
+    box-sizing: border-box;
 }
 
-footer {
-    visibility: hidden;
+/* ---------- TOP HEADER ---------- */
+
+.topbar {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:18px;
 }
 
-/* HEADER */
-
-.logo {
-    text-align: center;
-    font-size: 30px;
-    font-weight: 900;
-    letter-spacing: 1px;
-    margin-top: 5px;
+.menu {
+    width:42px;
+    height:42px;
+    border-radius:14px;
+    background:#101c2d;
+    border:1px solid #263a54;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:22px;
 }
 
-.logo-icon {
-    color: #25f5a3;
+.brand {
+    text-align:center;
+    flex:1;
 }
 
-.tagline {
-    text-align: center;
-    color: #71819b;
-    font-size: 10px;
-    letter-spacing: 2px;
-    margin-top: -5px;
-    margin-bottom: 22px;
+.brand-name {
+    font-size:27px;
+    font-weight:900;
+    letter-spacing:1px;
 }
 
-/* CARDS */
-
-.card {
-    background: linear-gradient(
-        145deg,
-        rgba(20, 34, 56, .92),
-        rgba(8, 17, 31, .94)
-    );
-    border: 1px solid rgba(81, 111, 145, .35);
-    border-radius: 20px;
-    padding: 18px;
-    margin-bottom: 14px;
-    box-shadow: 0 12px 35px rgba(0,0,0,.25);
+.brand-name span {
+    color:#24f4a0;
 }
 
-/* ASSET CARD */
-
-.asset-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+.brand-sub {
+    color:#8190a7;
+    font-size:8px;
+    letter-spacing:1.5px;
 }
 
-.small-label {
-    color: #73839c;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+.pro {
+    background:linear-gradient(135deg,#3b2d13,#6e511c);
+    border:1px solid #a87c2b;
+    color:#ffd76a;
+    padding:8px 10px;
+    border-radius:12px;
+    font-size:10px;
+    font-weight:800;
 }
 
-.asset-value {
-    font-size: 19px;
-    font-weight: 800;
-    margin-top: 5px;
+/* ---------- GLASS CARD ---------- */
+
+.glass {
+    background:
+        linear-gradient(
+            145deg,
+            rgba(19,35,57,.94),
+            rgba(7,17,31,.96)
+        );
+    border:1px solid rgba(72,101,132,.38);
+    border-radius:18px;
+    box-shadow:
+        0 15px 40px rgba(0,0,0,.28),
+        inset 0 1px rgba(255,255,255,.025);
 }
 
-.live {
-    color: #26f5a4;
-    font-size: 11px;
+/* ---------- ASSET BAR ---------- */
+
+.asset-bar {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    padding:15px;
+    margin-bottom:14px;
 }
 
-/* SIGNAL */
-
-.signal-area {
-    text-align: center;
-    padding: 5px 0 12px;
+.label {
+    color:#74849c;
+    font-size:9px;
+    text-transform:uppercase;
+    letter-spacing:1px;
 }
+
+.value {
+    color:#fff;
+    font-size:16px;
+    font-weight:800;
+    margin-top:5px;
+}
+
+.live-dot {
+    color:#28f5a4;
+    font-size:9px;
+    margin-left:4px;
+}
+
+/* ---------- SIGNAL AREA ---------- */
+
+.signal-card {
+    padding:18px 12px 20px;
+    text-align:center;
+    position:relative;
+    overflow:hidden;
+}
+
+/* subtle chart */
+
+.chart-bg {
+    position:absolute;
+    left:0;
+    right:0;
+    top:105px;
+    height:145px;
+    opacity:.30;
+}
+
+.signal-label {
+    color:#7d8ca3;
+    font-size:10px;
+    letter-spacing:1px;
+}
+
+.signal-asset {
+    font-size:22px;
+    font-weight:900;
+    margin-top:4px;
+}
+
+.signal-time {
+    color:#28eeb0;
+    font-size:10px;
+    margin-top:3px;
+}
+
+/* ---------- SIGNAL CIRCLE ---------- */
 
 .signal-circle {
-    width: 205px;
-    height: 205px;
-    margin: 10px auto 20px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width:205px;
+    height:205px;
+    border-radius:50%;
+    margin:20px auto 20px;
+    position:relative;
+    z-index:2;
 
-    font-size: 75px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
 
     background:
         radial-gradient(
             circle,
-            rgba(42,255,169,.32) 0%,
-            rgba(15,57,54,.75) 42%,
-            rgba(4,13,23,.95) 72%
+            rgba(37,247,162,.38) 0%,
+            rgba(13,67,55,.70) 35%,
+            rgba(4,14,25,.98) 72%
         );
 
-    border: 4px solid #29f5a4;
+    border:4px solid #29f5a5;
 
     box-shadow:
-        0 0 18px rgba(41,245,164,.8),
-        0 0 55px rgba(41,245,164,.35),
-        inset 0 0 35px rgba(41,245,164,.18);
+        0 0 15px rgba(41,245,165,.95),
+        0 0 45px rgba(41,245,165,.45),
+        0 0 100px rgba(41,245,165,.15),
+        inset 0 0 35px rgba(41,245,165,.25);
 }
 
-.signal-circle.put {
+.signal-circle.sell {
     background:
         radial-gradient(
             circle,
-            rgba(255,54,105,.32) 0%,
-            rgba(69,18,40,.75) 42%,
-            rgba(4,13,23,.95) 72%
+            rgba(255,53,105,.40) 0%,
+            rgba(76,17,39,.72) 35%,
+            rgba(4,14,25,.98) 72%
         );
 
-    border-color: #ff396d;
+    border-color:#ff396d;
 
     box-shadow:
-        0 0 18px rgba(255,57,109,.8),
-        0 0 55px rgba(255,57,109,.35),
-        inset 0 0 35px rgba(255,57,109,.18);
+        0 0 15px rgba(255,57,109,.95),
+        0 0 45px rgba(255,57,109,.45),
+        0 0 100px rgba(255,57,109,.15),
+        inset 0 0 35px rgba(255,57,109,.25);
 }
 
-.signal-circle.wait {
-    background:
-        radial-gradient(
-            circle,
-            rgba(255,196,76,.25) 0%,
-            rgba(55,42,17,.75) 42%,
-            rgba(4,13,23,.95) 72%
-        );
-
-    border-color: #ffc44d;
+.arrow {
+    font-size:82px;
+    font-weight:900;
+    color:#54ffb2;
+    text-shadow:0 0 25px rgba(84,255,178,.7);
 }
 
-.buy {
-    color: #29f5a4;
+.sell .arrow {
+    color:#ff638b;
+    text-shadow:0 0 25px rgba(255,99,139,.7);
 }
 
-.sell {
-    color: #ff396d;
+.signal-main {
+    position:relative;
+    z-index:3;
+    font-size:29px;
+    font-weight:950;
+    letter-spacing:.2px;
 }
 
-.wait {
-    color: #ffc44d;
+.buy-text {
+    color:#2bf5a4;
 }
 
-.signal-text {
-    font-size: 31px;
-    font-weight: 900;
-    margin-bottom: 3px;
+.sell-text {
+    color:#ff3e71;
 }
 
 .direction {
-    color: #7e8da4;
-    font-size: 11px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
+    color:#8b9ab0;
+    font-size:10px;
+    letter-spacing:1.8px;
+    margin-top:4px;
 }
 
-/* STATS */
+/* ---------- STAT CARDS ---------- */
 
 .stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-top: 18px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:18px;
 }
 
 .stat {
-    background: rgba(7,16,29,.75);
-    border: 1px solid rgba(74,103,135,.35);
-    border-radius: 15px;
-    padding: 15px;
-    text-align: center;
+    background:rgba(7,17,31,.78);
+    border:1px solid rgba(69,98,130,.42);
+    border-radius:16px;
+    padding:15px 10px;
 }
 
 .stat-title {
-    color: #71819b;
-    font-size: 10px;
-    text-transform: uppercase;
+    color:#72829b;
+    font-size:9px;
+    text-transform:uppercase;
 }
 
-.stat-value {
-    font-size: 25px;
-    font-weight: 900;
-    margin-top: 6px;
+.stat-number {
+    font-size:25px;
+    font-weight:900;
+    margin-top:5px;
 }
 
-/* AI STATUS */
-
-.ai-status {
-    text-align: center;
-    background: rgba(15,32,43,.85);
-    border: 1px solid rgba(41,245,164,.25);
-    border-radius: 14px;
-    padding: 14px;
-    color: #29f5a4;
-    font-size: 12px;
-    margin: 15px 0;
+.dots {
+    font-size:16px;
+    letter-spacing:2px;
+    margin-top:3px;
 }
 
-/* BUTTON */
+.green {
+    color:#2bf5a4;
+}
+
+.red {
+    color:#ff416f;
+}
+
+.gray {
+    color:#34435a;
+}
+
+/* ---------- AI STATUS ---------- */
+
+.ai-card {
+    margin-top:12px;
+    padding:15px;
+    text-align:left;
+}
+
+.ai-top {
+    display:flex;
+    align-items:center;
+    gap:9px;
+    color:#27f3ad;
+    font-size:12px;
+    font-weight:800;
+}
+
+.ai-dot {
+    width:9px;
+    height:9px;
+    border-radius:50%;
+    background:#28f5a4;
+    box-shadow:0 0 12px #28f5a4;
+}
+
+.ai-text {
+    color:#71829a;
+    font-size:10px;
+    margin-top:6px;
+}
+
+/* ---------- MAIN BUTTON ---------- */
 
 .stButton > button {
-    width: 100%;
-    height: 55px;
-    border-radius: 16px;
-    border: 1px solid #29f5a4;
-    background: linear-gradient(100deg,#18b979,#29f5a4);
-    color: #03120d;
-    font-weight: 900;
-    font-size: 15px;
-    letter-spacing: .3px;
+    width:100%;
+    height:56px;
+    margin-top:13px;
+
+    border-radius:17px;
+
+    background:
+        linear-gradient(
+            100deg,
+            #17c987,
+            #36f5aa
+        );
+
+    border:1px solid #52ffc0;
+
+    color:#04150e !important;
+
+    font-size:14px;
+    font-weight:900;
+
+    box-shadow:
+        0 8px 25px rgba(40,245,164,.20);
 }
 
 .stButton > button:hover {
-    border-color: #55ffba;
-    color: #03120d;
+    border-color:#72ffca;
+    color:#04150e !important;
 }
 
-/* SELECT */
+/* ---------- SELECT ---------- */
+
+.stSelectbox {
+    margin-bottom:0;
+}
 
 .stSelectbox label {
-    color: #8797ad !important;
-    font-size: 11px !important;
+    color:#73849c !important;
+    font-size:9px !important;
+    text-transform:uppercase;
 }
 
 .stSelectbox div[data-baseweb="select"] > div {
-    background: #101c2f;
-    border: 1px solid #263c57;
-    border-radius: 13px;
+    background:#0e1a2c;
+    border:1px solid #273d57;
+    border-radius:12px;
 }
 
-/* PAGE TITLE */
+/* ---------- BOTTOM NAV ---------- */
 
-.page-title {
-    font-size: 25px;
-    font-weight: 900;
-    margin-bottom: 3px;
+.bottom {
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:5px;
+
+    margin-top:20px;
+    padding:9px;
+
+    background:rgba(8,17,30,.96);
+    border:1px solid #24364f;
+    border-radius:20px;
 }
 
-.page-subtitle {
-    color: #75849b;
-    font-size: 12px;
-    margin-bottom: 18px;
+.nav {
+    text-align:center;
+    color:#718199;
+    font-size:9px;
+    padding:8px 2px;
 }
 
-/* HISTORY */
-
-.history-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 13px 5px;
-    border-bottom: 1px solid rgba(80,100,125,.18);
+.nav-icon {
+    font-size:20px;
+    display:block;
+    margin-bottom:4px;
 }
 
-.history-asset {
-    font-weight: 700;
-    font-size: 14px;
+.nav.active {
+    color:#29f5a4;
 }
 
-.history-meta {
-    color: #71819b;
-    font-size: 10px;
-}
-
-.win {
-    color: #29f5a4;
-    font-weight: 800;
-}
-
-.loss {
-    color: #ff396d;
-    font-weight: 800;
-}
-
-/* NAVIGATION */
-
-.nav-title {
-    text-align: center;
-    color: #71819b;
-    font-size: 9px;
-    margin-top: 22px;
+.footer {
+    text-align:center;
+    color:#53627a;
+    font-size:8px;
+    margin-top:12px;
 }
 
 </style>
@@ -356,459 +431,357 @@ footer {
 # =========================================================
 
 st.markdown("""
-<div class="logo">
-    <span class="logo-icon">▥</span> XIGA
+<div class="topbar">
+
+    <div class="menu">☰</div>
+
+    <div class="brand">
+        <div class="brand-name">
+            <span>▥</span> XIGA
+        </div>
+        <div class="brand-sub">
+            TRADING SIGNAL BOT
+        </div>
+    </div>
+
+    <div class="pro">
+        👑 PRO
+    </div>
+
 </div>
-<div class="tagline">TRADING SIGNAL BOT</div>
 """, unsafe_allow_html=True)
 
 
 # =========================================================
-# NAVIGATION
+# ASSET / TIMEFRAME
 # =========================================================
 
-nav1, nav2, nav3, nav4 = st.columns(4)
+st.markdown('<div class="glass asset-bar">', unsafe_allow_html=True)
 
-with nav1:
-    if st.button("📈\nTrade", use_container_width=True):
-        st.session_state.page = "Trade"
+c1, c2 = st.columns(2)
 
-with nav2:
-    if st.button("◷\nHistory", use_container_width=True):
-        st.session_state.page = "History"
-
-with nav3:
-    if st.button("▣\nLearn", use_container_width=True):
-        st.session_state.page = "Learn"
-
-with nav4:
-    if st.button("♙\nProfile", use_container_width=True):
-        st.session_state.page = "Profile"
-
-
-st.divider()
-
-
-# =========================================================
-# TRADE PAGE
-# =========================================================
-
-if st.session_state.page == "Trade":
-
-    st.markdown("""
-    <div class="page-title">Trading Setup</div>
-    <div class="page-subtitle">
-        Configure your market analysis
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Asset
+with c1:
+    st.markdown(
+        '<div class="label">Asset</div>',
+        unsafe_allow_html=True
+    )
 
     asset = st.selectbox(
-        "ASSET",
+        "asset",
         [
             "🇺🇸🇪🇺 EUR/USD",
             "🇬🇧🇺🇸 GBP/USD",
             "🇺🇸🇯🇵 USD/JPY",
-            "🇦🇺🇺🇸 AUD/USD",
-            "🇺🇸🇨🇦 USD/CAD",
             "🥇 XAU/USD"
-        ]
+        ],
+        label_visibility="collapsed"
+    )
+
+with c2:
+    st.markdown(
+        '<div class="label">Timeframe</div>',
+        unsafe_allow_html=True
     )
 
     timeframe = st.selectbox(
-        "TIMEFRAME",
+        "timeframe",
         [
-            "10 Seconds",
-            "15 Seconds",
-            "30 Seconds",
-            "1 Minute",
-            "5 Minutes"
-        ]
+            "10 SEC",
+            "15 SEC",
+            "30 SEC",
+            "1 MIN",
+            "5 MIN"
+        ],
+        label_visibility="collapsed"
     )
 
-    expiry = st.selectbox(
-        "TRADE EXPIRY",
-        [
-            "15 Seconds",
-            "30 Seconds",
-            "1 Minute",
-            "2 Minutes",
-            "5 Minutes"
-        ]
-    )
+st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
 
-    # =====================================================
-    # GENERATE
-    # =====================================================
+# =========================================================
+# SIGNAL STATE
+# =========================================================
 
-    if st.button("⚡ ANALYZE MARKET", use_container_width=True):
+if "signal" not in st.session_state:
+    st.session_state.signal = None
 
-        with st.spinner("Analyzing market conditions..."):
+if "score" not in st.session_state:
+    st.session_state.score = 0
 
-            score = random.randint(72, 96)
 
-            if score >= 82:
-                signal = random.choice(["CALL", "PUT"])
-            else:
-                signal = "NO TRADE"
+# =========================================================
+# GENERATE SIGNAL
+# =========================================================
 
-            st.session_state.signal = signal
-            st.session_state.score = score
-            st.session_state.signal_time = datetime.now()
+if st.button("⚡  ANALYZE MARKET"):
 
-    # =====================================================
-    # SIGNAL
-    # =====================================================
+    score = random.randint(78, 96)
 
-    if st.session_state.signal:
-
-        signal = st.session_state.signal
-        score = st.session_state.score
-
-        st.markdown("""
-        <div class="card">
-        """, unsafe_allow_html=True)
-
-        st.markdown(
-            f"""
-            <div class="small-label">SIGNAL FOR</div>
-            <div class="asset-value">{asset}</div>
-            <div class="live">● MARKET ANALYSIS</div>
-            """,
-            unsafe_allow_html=True
+    if score >= 86:
+        st.session_state.signal = random.choice(
+            ["CALL", "PUT"]
         )
+    else:
+        st.session_state.signal = "NO TRADE"
 
-        if signal == "CALL":
+    st.session_state.score = score
 
-            st.markdown("""
-            <div class="signal-area">
-                <div class="signal-circle">↗</div>
-                <div class="signal-text buy">BUY (CALL)</div>
-                <div class="direction">UPWARD SIGNAL</div>
-            </div>
-            """, unsafe_allow_html=True)
 
-        elif signal == "PUT":
+# =========================================================
+# SIGNAL SCREEN
+# =========================================================
 
-            st.markdown("""
-            <div class="signal-area">
-                <div class="signal-circle put">↘</div>
-                <div class="signal-text sell">SELL (PUT)</div>
-                <div class="direction">DOWNWARD SIGNAL</div>
-            </div>
-            """, unsafe_allow_html=True)
+signal = st.session_state.signal
 
-        else:
+if signal:
 
-            st.markdown("""
-            <div class="signal-area">
-                <div class="signal-circle wait">⏸</div>
-                <div class="signal-text wait">NO TRADE</div>
-                <div class="direction">WAIT FOR CONFIRMATION</div>
-            </div>
-            """, unsafe_allow_html=True)
+    if signal == "CALL":
 
-        # Stats
+        arrow = "↗"
+        title = "BUY (CALL)"
+        direction = "UPWARD TREND"
+        color_class = "buy-text"
+        circle_class = ""
+        dot_class = "green"
 
-        st.markdown(
-            f"""
-            <div class="stats">
+    elif signal == "PUT":
 
-                <div class="stat">
-                    <div class="stat-title">
-                        Signal Strength
-                    </div>
-
-                    <div class="stat-value">
-                        {min(5, max(1, round(score / 20)))}/5
-                    </div>
-                </div>
-
-                <div class="stat">
-                    <div class="stat-title">
-                        Setup Score
-                    </div>
-
-                    <div class="stat-value">
-                        {score}/100
-                    </div>
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.markdown("""
-        <div class="ai-status">
-            ● AI ANALYSIS COMPLETE<br>
-            <span style="color:#71819b;font-size:10px;">
-            Live market engine will be connected next
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown(
-            f"""
-            <div class="card">
-
-                <div class="history-row">
-                    <span class="history-meta">TIMEFRAME</span>
-                    <span>{timeframe}</span>
-                </div>
-
-                <div class="history-row">
-                    <span class="history-meta">EXPIRY</span>
-                    <span>{expiry}</span>
-                </div>
-
-                <div class="history-row">
-                    <span class="history-meta">SIGNAL TIME</span>
-                    <span>
-                    {st.session_state.signal_time.strftime("%H:%M:%S")}
-                    </span>
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if st.button("🔄 GENERATE NEW SIGNAL", use_container_width=True):
-            st.session_state.signal = None
-            st.rerun()
+        arrow = "↘"
+        title = "SELL (PUT)"
+        direction = "DOWNWARD TREND"
+        color_class = "sell-text"
+        circle_class = "sell"
+        dot_class = "red"
 
     else:
 
-        st.markdown("""
-        <div class="card">
-            <div class="signal-area">
-                <div class="signal-circle wait">◎</div>
-                <div class="signal-text wait">
-                    READY
-                </div>
-                <div class="direction">
-                    START MARKET ANALYSIS
-                </div>
-            </div>
+        arrow = "⏸"
+        title = "NO TRADE"
+        direction = "WAIT FOR CONFIRMATION"
+        color_class = "wait"
+        circle_class = ""
+        dot_class = "gray"
 
-            <div class="ai-status">
-                ● AI ENGINE READY
+    # Chart background
+
+    st.markdown("""
+    <div class="glass signal-card">
+
+        <svg class="chart-bg"
+             viewBox="0 0 500 160"
+             preserveAspectRatio="none">
+
+            <polyline
+                points="
+                0,130
+                35,115
+                60,125
+                90,90
+                125,105
+                160,65
+                190,85
+                225,45
+                260,70
+                300,35
+                330,60
+                370,25
+                405,48
+                440,15
+                475,35
+                500,5"
+                fill="none"
+                stroke="#27f5a4"
+                stroke-width="3"/>
+
+        </svg>
+
+        <div class="signal-label">
+            SIGNAL FOR
+        </div>
+
+    """, unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <div class="signal-asset">
+            {asset}
+        </div>
+
+        <div class="signal-time">
+            ● TIMEFRAME: {timeframe}
+        </div>
+
+        <div class="signal-circle {circle_class}">
+            <div class="arrow">
+                {arrow}
             </div>
         </div>
-        """, unsafe_allow_html=True)
 
-    st.caption(
-        "⚠️ Demo interface. No live trading signal is generated yet."
+        <div class="signal-main {color_class}">
+            {title}
+        </div>
+
+        <div class="direction">
+            {direction}
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
+    # =====================================================
+    # STATS
+    # =====================================================
 
-# =========================================================
-# HISTORY
-# =========================================================
+    score = st.session_state.score
 
-elif st.session_state.page == "History":
+    strength = min(5, max(1, round(score / 20)))
 
-    st.markdown("""
-    <div class="page-title">Signal History</div>
-    <div class="page-subtitle">
-        Track your signals and results
-    </div>
-    """, unsafe_allow_html=True)
+    filled = "● " * strength
+    empty = "● " * (5 - strength)
 
-    if len(st.session_state.history) == 0:
+    st.markdown(
+        f"""
+        <div class="stats">
 
-        st.markdown("""
-        <div class="card" style="text-align:center;padding:45px 20px;">
-            <div style="font-size:45px;">◷</div>
-            <div style="font-size:18px;font-weight:800;">
-                No Signal History
+            <div class="stat">
+
+                <div class="stat-title">
+                    Signal Strength
+                </div>
+
+                <div class="dots {dot_class}">
+                    {filled}
+                    <span class="gray">{empty}</span>
+                </div>
+
+                <div class="stat-number">
+                    {strength}/5
+                </div>
+
             </div>
-            <div style="color:#71819b;font-size:12px;margin-top:8px;">
-                Your completed signals will appear here.
+
+            <div class="stat">
+
+                <div class="stat-title">
+                    Setup Score
+                </div>
+
+                <div class="stat-number {color_class}">
+                    {score}%
+                </div>
+
+                <div class="live-dot">
+                    ● ANALYSIS
+                </div>
+
             </div>
+
         </div>
-        """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
 
-    else:
-
-        for item in st.session_state.history:
-
-            result_class = "win" if item["result"] == "WIN" else "loss"
-
-            st.markdown(
-                f"""
-                <div class="card">
-                    <div class="history-row">
-
-                        <div>
-                            <div class="history-asset">
-                                {item["asset"]}
-                            </div>
-
-                            <div class="history-meta">
-                                {item["direction"]} · {item["expiry"]}
-                            </div>
-                        </div>
-
-                        <div class="{result_class}">
-                            {item["result"]}
-                        </div>
-
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-
-# =========================================================
-# LEARN
-# =========================================================
-
-elif st.session_state.page == "Learn":
+    # =====================================================
+    # AI STATUS
+    # =====================================================
 
     st.markdown("""
-    <div class="page-title">Learn</div>
-    <div class="page-subtitle">
-        Understand how XIGA analyzes markets
-    </div>
-    """, unsafe_allow_html=True)
+    <div class="glass ai-card">
 
-    sections = [
-        (
-            "📊 Trend Analysis",
-            "The future engine will analyze multiple timeframes "
-            "to identify the dominant market direction."
-        ),
-        (
-            "📈 Technical Indicators",
-            "EMA, RSI, MACD, Bollinger Bands, ADX and volatility "
-            "will be combined rather than relying on one indicator."
-        ),
-        (
-            "🎯 Signal Filtering",
-            "When market evidence conflicts, XIGA can return "
-            "NO TRADE instead of forcing a signal."
-        ),
-        (
-            "📚 Performance",
-            "Every completed signal can be recorded so actual "
-            "historical performance can be calculated."
-        )
-    ]
-
-    for title, description in sections:
-
-        st.markdown(
-            f"""
-            <div class="card">
-                <div style="font-size:17px;font-weight:800;">
-                    {title}
-                </div>
-
-                <div style="
-                    color:#7d8ca4;
-                    font-size:12px;
-                    line-height:1.6;
-                    margin-top:8px;
-                ">
-                    {description}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-# =========================================================
-# PROFILE
-# =========================================================
-
-elif st.session_state.page == "Profile":
-
-    st.markdown("""
-    <div class="page-title">Profile</div>
-    <div class="page-subtitle">
-        XIGA account and application settings
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="card">
-
-        <div style="
-            font-size:19px;
-            font-weight:800;
-        ">
-            👤 XIGA Trader
+        <div class="ai-top">
+            <span class="ai-dot"></span>
+            AI ANALYSIS COMPLETE
         </div>
 
-        <div style="
-            color:#29f5a4;
-            font-size:11px;
-            margin-top:5px;
-        ">
-            ● FREE PLAN
+        <div class="ai-text">
+            Multi-factor market analysis completed
         </div>
 
     </div>
     """, unsafe_allow_html=True)
 
-    options = [
-        ("⚙️", "Settings"),
-        ("🔔", "Notifications"),
-        ("🔒", "Security"),
-        ("❓", "Help & Support"),
-        ("ℹ️", "About XIGA")
-    ]
+    # =====================================================
+    # NEW SIGNAL
+    # =====================================================
 
-    for icon, title in options:
+    if st.button("↻  GENERATE NEW SIGNAL"):
 
-        st.markdown(
-            f"""
-            <div class="card"
-                 style="
-                    padding:16px;
-                    margin-bottom:8px;
-                 ">
+        st.session_state.signal = None
+        st.session_state.score = 0
+        st.rerun()
 
-                <span style="font-size:18px;">
-                    {icon}
-                </span>
+else:
 
-                <span style="
-                    margin-left:12px;
-                    font-size:14px;
-                    font-weight:700;
-                ">
-                    {title}
-                </span>
+    st.markdown("""
+    <div class="glass signal-card">
 
-                <span style="
-                    float:right;
-                    color:#71819b;
-                ">
-                    ›
-                </span>
+        <div class="signal-label">
+            READY TO ANALYZE
+        </div>
 
+        <div class="signal-circle">
+            <div class="arrow">
+                ◇
             </div>
-            """,
-            unsafe_allow_html=True
-        )
+        </div>
+
+        <div class="signal-main buy-text">
+            AI READY
+        </div>
+
+        <div class="direction">
+            WAITING FOR MARKET ANALYSIS
+        </div>
+
+        <div class="glass ai-card">
+
+            <div class="ai-top">
+                <span class="ai-dot"></span>
+                AI ENGINE READY
+            </div>
+
+            <div class="ai-text">
+                Select your asset and timeframe
+            </div>
+
+        </div>
+
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.button("⚡  ANALYZE MARKET")
 
 
 # =========================================================
-# FOOTER
+# BOTTOM NAV
 # =========================================================
 
 st.markdown("""
-<div class="nav-title">
-    🔒 SECURE &nbsp; • &nbsp; XIGA AI &nbsp; • &nbsp; v1.0
+<div class="bottom">
+
+    <div class="nav active">
+        <span class="nav-icon">⌁</span>
+        Trade
+    </div>
+
+    <div class="nav">
+        <span class="nav-icon">◷</span>
+        History
+    </div>
+
+    <div class="nav">
+        <span class="nav-icon">▣</span>
+        Learn
+    </div>
+
+    <div class="nav">
+        <span class="nav-icon">♙</span>
+        Profile
+    </div>
+
+</div>
+
+<div class="footer">
+    🔒 SECURE &nbsp; • &nbsp; XIGA AI &nbsp; • &nbsp; v2.0
 </div>
 """, unsafe_allow_html=True)
