@@ -2704,45 +2704,212 @@ component_data = {
                 total_results,
 
             "win_rate":
-                win_rate
-                if win_rate is not None
-                else "—"
+
+            
+    def analyze_callback():
+
+    component_state = st.session_state.get("xiga_component")
+
+    if not component_state:
+        return
+
+    action = component_state.get("analyze")
+
+    if not action:
+        return
+
+    category = action.get("category", "Forex")
+
+    display_asset = action.get(
+        "asset",
+        "🇺🇸 🇪🇺 EUR/USD"
+    )
+
+    timeframe = action.get(
+        "timeframe",
+        "1 MIN"
+    )
+
+    symbol = ASSETS.get(
+        category,
+        {}
+    ).get(
+        display_asset
+    )
+
+    # OTC does not use the normal Twelve Data feed
+    if category == "OTC" or symbol is None:
+
+        st.session_state.last_result = {
+            "success": False,
+            "signal": "NO TRADE",
+            "strength": 0,
+            "status": "OTC DATA FEED REQUIRED",
+            "description": (
+                "Pocket Option OTC pricing is separate "
+                "from the normal market feed. XIGA will "
+                "not fabricate an OTC signal."
+            )
         }
 
+        return
+
+    # Analyze live market
+    result = analyze_market(
+        symbol,
+        timeframe
+    )
+
+    st.session_state.last_result = result
+
+    if not result.get("success"):
+        return
+
+    # Save signal to history
+    st.session_state.history.insert(
+        0,
+        {
+            "time": datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "asset": display_asset,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "signal": result.get(
+                "signal",
+                "NO TRADE"
+            ),
+            "strength": result.get(
+                "strength",
+                0
+            ),
+            "price": result.get(
+                "price",
+                0
+            ),
+            "status": "PENDING"
+        }
+    )
+
+    # Keep last 100 signals
+    st.session_state.history = (
+        st.session_state.history[:100]
+    )
+
+    st.session_state.stats["signals"] += 1
+
+
+def navigation_callback():
+
+    component_state = st.session_state.get(
+        "xiga_component"
+    )
+
+    if not component_state:
+        return
+
+    action = component_state.get(
+        "navigation"
+    )
+
+    if action:
+        st.session_state.page = action
+
+
+# Statistics
+
+wins = st.session_state.stats.get(
+    "wins",
+    0
+)
+
+losses = st.session_state.stats.get(
+    "losses",
+    0
+)
+
+total_results = wins + losses
+
+
+if total_results > 0:
+
+    win_rate = round(
+        wins / total_results * 100,
+        1
+    )
+
+else:
+
+    win_rate = None
+
+
+# Result shown on Trade page
+
+if st.session_state.page == "trade":
+
+    result_for_ui = (
+        st.session_state.last_result
+    )
+
+else:
+
+    result_for_ui = {}
+
+
+# Data sent to the XIGA component
+
+component_data = {
+
+    "assets": ASSETS,
+
+    "page": st.session_state.page,
+
+    "result": result_for_ui,
+
+    "stats": {
+
+        "wins": wins,
+
+        "losses": losses,
+
+        "total": total_results,
+
+        "win_rate": (
+            win_rate
+            if win_rate is not None
+            else "—"
+        )
+    }
 }
 
 
+# Mount XIGA component
 
 xiga_component = xiga_component(
 
     data=component_data,
 
     default={
-        "page":
-            st.session_state.page
+        "page": st.session_state.page
     },
 
-    on_page_change=
-        lambda: None,
+    on_page_change=lambda: None,
 
-    on_analyze_change=
-        analyze_callback,
+    on_analyze_change=analyze_callback,
 
-    on_navigation_change=
-        navigation_callback,
+    on_navigation_change=navigation_callback,
 
-    key=
-        "xiga_component",
+    key="xiga_component",
 
-    width=
-        "stretch",
+    width="stretch",
 
-    height=
-        900
-
+    height=900
 )
 
 
+# --------------------------------
+# HISTORY PAGE
+# --------------------------------
 
 if st.session_state.page == "history":
 
@@ -2750,19 +2917,15 @@ if st.session_state.page == "history":
         "### 📊 XIGA Trade History"
     )
 
-
     if not st.session_state.history:
 
         st.info(
             "No signals have been generated yet."
         )
 
-
     else:
 
-        for item in (
-            st.session_state.history[:20]
-        ):
+        for item in st.session_state.history[:20]:
 
             st.markdown(
                 f"""
@@ -2777,13 +2940,15 @@ if st.session_state.page == "history":
             )
 
 
+# --------------------------------
+# LEARN PAGE
+# --------------------------------
 
 elif st.session_state.page == "learn":
 
     st.markdown(
         "### 📚 XIGA Learn"
     )
-
 
     st.markdown(
         """
@@ -2819,6 +2984,9 @@ When conditions do not provide enough confirmation, XIGA waits instead of forcin
     )
 
 
+# --------------------------------
+# PROFILE PAGE
+# --------------------------------
 
 elif st.session_state.page == "profile":
 
@@ -2826,26 +2994,27 @@ elif st.session_state.page == "profile":
         "### 👤 XIGA Profile"
     )
 
-
     st.metric(
         "Total Signals",
-        st.session_state.stats["signals"]
+        st.session_state.stats.get(
+            "signals",
+            0
+        )
     )
-
 
     st.metric(
         "Completed Results",
         total_results
     )
 
-
     st.metric(
         "Historical Win Rate",
-        f"{win_rate}%"
-        if win_rate is not None
-        else "—"
+        (
+            f"{win_rate}%"
+            if win_rate is not None
+            else "—"
+        )
     )
-
 
     st.caption(
         "Win rate is calculated only from "
@@ -2853,6 +3022,9 @@ elif st.session_state.page == "profile":
     )
 
 
+# --------------------------------
+# DISCLAIMER
+# --------------------------------
 
 st.caption(
     "XIGA is a market-analysis assistant. "
