@@ -117,41 +117,134 @@ def analyze_market(symbol,timeframe):
     return {"success":True,"signal":signal,"strength":strength,"score":score,"price":current,"entry_candle_time":candles[-1]["datetime"],"rsi":rv,"macd":mv,"description":desc,"status":status,"reasons":reasons}
 
 # ---------------- AUTOMATIC RESULT TRACKING ----------------
+def candle_time_value(value):
+    """Convert a Twelve Data candle timestamp to a comparable datetime."""
+    if not value:
+        return None
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(str(value).strip(), fmt)
+            except ValueError:
+                pass
+    return None
+
+
 def update_pending_results():
-    changed=False
-    pending=[x for x in st.session_state.history if x.get("status")=="PENDING" and x.get("signal") in ("CALL","PUT")]
-    groups={}
-    for item in pending: groups.setdefault((item["symbol"],TIMEFRAMES[item["timeframe"]]),[]).append(item)
-    for (symbol,interval),items in groups.items():
-        candles,_=get_candles(symbol,interval,outputsize=8)
-        if not candles: continue
-        times=[c["datetime"] for c in candles]
+    changed = False
+
+    pending = [
+        x for x in st.session_state.history
+        if x.get("status") == "PENDING"
+        and x.get("signal") in ("CALL", "PUT")
+        and x.get("symbol")
+        and x.get("timeframe") in TIMEFRAMES
+    ]
+
+    groups = {}
+    for item in pending:
+        key = (item["symbol"], TIMEFRAMES[item["timeframe"]])
+        groups.setdefault(key, []).append(item)
+
+    for (symbol, interval), items in groups.items():
+
+        candles, _ = get_candles(
+            symbol,
+            interval,
+            outputsize=10
+        )
+
+        if len(candles) < 3:
+            continue
+
+        candle_times = [
+            candle_time_value(c.get("datetime"))
+            for c in candles
+        ]
+
         for item in items:
-            entry_time=item.get("entry_candle_time",item.get("time"))
-            try: idx=times.index(entry_time)
-            except ValueError: continue
-            # Require TWO newer candles: the first is then fully completed.
-            if len(candles)-idx < 3: continue
-            result_candle=candles[idx+1]
-            result_price=result_candle["close"]
-            entry=item["price"]
-            if item["signal"]=="CALL":
-                outcome="WIN" if result_price>entry else "LOSS" if result_price<entry else "DRAW"
+
+            entry_time = candle_time_value(
+                item.get("entry_candle_time")
+            )
+
+            if entry_time is None:
+                continue
+
+            # Find the first candle strictly after the signal candle.
+            # We then require ONE candle after that result candle as
+            # proof that the result candle has finished.
+            newer_indexes = [
+                i for i, candle_time in enumerate(candle_times)
+                if candle_time is not None and candle_time > entry_time
+            ]
+
+            if not newer_indexes:
+                continue
+
+            result_index = newer_indexes[0]
+
+            # The result candle must itself be completed.
+            # If another candle has started after it, its close is final.
+            if result_index + 1 >= len(candles):
+                continue
+
+            result_candle = candles[result_index]
+            result_price = result_candle["close"]
+            entry_price = float(item["price"])
+
+            if item["signal"] == "CALL":
+                if result_price > entry_price:
+                    outcome = "WIN"
+                elif result_price < entry_price:
+                    outcome = "LOSS"
+                else:
+                    outcome = "DRAW"
             else:
-                outcome="WIN" if result_price<entry else "LOSS" if result_price>entry else "DRAW"
-            item["status"]=outcome; item["result_price"]=result_price; item["result_candle_time"]=result_candle["datetime"]; item["checked_at"]=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            if outcome=="WIN": st.session_state.wins+=1
-            elif outcome=="LOSS": st.session_state.losses+=1
-            changed=True
+                if result_price < entry_price:
+                    outcome = "WIN"
+                elif result_price > entry_price:
+                    outcome = "LOSS"
+                else:
+                    outcome = "DRAW"
+
+            item["status"] = outcome
+            item["result_price"] = result_price
+            item["result_candle_time"] = result_candle["datetime"]
+            item["checked_at"] = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            if outcome == "WIN":
+                st.session_state.wins += 1
+            elif outcome == "LOSS":
+                st.session_state.losses += 1
+
+            changed = True
+
     return changed
 
+
 try:
-    fragment=st.fragment
+    fragment = st.fragment
 except AttributeError:
-    fragment=None
+    fragment = None
+
 
 def tracker():
-    if update_pending_results(): st.rerun()
+    changed = update_pending_results()
+
+    if changed:
+        # Force the complete Streamlit app to rerun so the
+        # WIN/LOSS and historical win rate are immediately visible.
+        try:
+            st.rerun(scope="app")
+        except TypeError:
+            st.rerun()
+
 
 # ---------------- CSS: ORIGINAL DESIGN ----------------
 st.markdown("""
